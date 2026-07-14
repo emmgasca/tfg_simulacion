@@ -1,164 +1,156 @@
 #include <Arduino.h>
-#include "hal.h"
+#include <SPI.h>
+#include "ads1298.h"
 
-enum Estado { STANDBY, GRABANDO, ENVIANDO };
-Estado estadoActual = STANDBY;
-SemaphoreHandle_t mutexSerial;
-QueueHandle_t colaEMG;
-QueueHandle_t colaIMU;
-uint32_t contadorEMG = 0;
-uint32_t contadorIMU = 0;
-volatile bool movimientoDetectado = false;
-constexpr int16_t UMBRAL_MOVIMIENTO = 1000;  // mg simulados
-
-struct MuestraEMG {
-    int32_t canal[8];
-    uint32_t timestamp;
-};
-struct MuestraIMU {
-    int16_t acc[3];
-    int16_t gyr[3];
-    uint32_t timestamp;
-};
-
-void actualizarLED() {
-    digitalWrite(LED_PIN_RGB_Red,   LOW);
-    digitalWrite(LED_PIN_RGB_Green, LOW);
-    digitalWrite(LED_PIN_RGB_Blue,  LOW);
-    switch (estadoActual) {
-        case STANDBY:  digitalWrite(LED_PIN_RGB_Green, HIGH); break;
-        case GRABANDO: digitalWrite(LED_PIN_RGB_Blue,  HIGH); break;
-        case ENVIANDO: digitalWrite(LED_PIN_RGB_Red,   HIGH); break;
-    }
-}
-
-void tareaBoton(void* params) {
-    while (true) {
-        if (digitalRead(BOOT_BTN) == LOW) {
-            delay(50);
-            if (digitalRead(BOOT_BTN) == LOW) {
-                while (digitalRead(BOOT_BTN) == LOW);
-                switch (estadoActual) {
-                    case STANDBY:
-                        estadoActual = GRABANDO;
-                        xSemaphoreTake(mutexSerial, portMAX_DELAY);
-                        Serial.println("==================");
-                        Serial.println("→ GRABANDO");
-                        Serial.println("==================");
-                        xSemaphoreGive(mutexSerial);
-                        break;
-                    case GRABANDO:
-                        estadoActual = ENVIANDO;
-                        xSemaphoreTake(mutexSerial, portMAX_DELAY);
-                        Serial.println("==================");
-                        Serial.println("→ ENVIANDO");
-                        Serial.println("Muestras EMG: " + String(contadorEMG));
-                        Serial.println("Muestras IMU: " + String(contadorIMU));
-                        Serial.println("==================");
-                        xSemaphoreGive(mutexSerial);
-                        break;
-                    case ENVIANDO:
-                        estadoActual = STANDBY;
-                        contadorEMG = 0;
-                        contadorIMU = 0;
-                        xSemaphoreTake(mutexSerial, portMAX_DELAY);
-                        Serial.println("==================");
-                        Serial.println("→ STANDBY");
-                        Serial.println("==================");
-                        xSemaphoreGive(mutexSerial);
-                        break;
-                }
-                actualizarLED();
-            }
-        }
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-}
-
-void tareaSimulacion(void* params) {
-    while (true) {
-        if (estadoActual == GRABANDO && movimientoDetectado) {
-            MuestraEMG muestra;
-            for (int i = 0; i < 8; i++)
-                muestra.canal[i] = random(-1000, 1000);
-            muestra.timestamp = millis();
-            xQueueSend(colaEMG, &muestra, 0);
-        }
-        vTaskDelay(pdMS_TO_TICKS(500));
-    }
-}
-
-void tareaIMU(void* params) {
-    while (true) {
-        if (estadoActual == GRABANDO) {
-            MuestraIMU muestra;
-            for (int i = 0; i < 3; i++) {
-                muestra.acc[i] = random(-2000, 2000);
-                muestra.gyr[i] = random(-500, 500);
-            }
-            muestra.timestamp = millis();
-            xQueueSend(colaIMU, &muestra, 0);
-            int16_t aceleracionTotal = abs(muestra.acc[0]) + 
-                           abs(muestra.acc[1]) + 
-                           abs(muestra.acc[2]);
-            movimientoDetectado = (aceleracionTotal > UMBRAL_MOVIMIENTO);
-        }
-        vTaskDelay(pdMS_TO_TICKS(10));
-    }
-    
-}
-
-void tareaSerial(void* params) {
-    MuestraEMG muestra;
-    MuestraIMU muestraIMU;
-    while (true) {
-        if (xQueueReceive(colaEMG, &muestra, pdMS_TO_TICKS(100))) {
-            xSemaphoreTake(mutexSerial, portMAX_DELAY);
-            Serial.print("EMG: ");
-            for (int i = 0; i < 8; i++) {
-                Serial.print(muestra.canal[i]);
-                Serial.print(" ");
-            }
-            Serial.println();
-            xSemaphoreGive(mutexSerial);
-            contadorEMG++;
-        }
-        if (xQueueReceive(colaIMU, &muestraIMU, pdMS_TO_TICKS(100))) {
-            xSemaphoreTake(mutexSerial, portMAX_DELAY);
-            Serial.print("IMU: ");
-            for (int i = 0; i < 3; i++) {
-                Serial.print(muestraIMU.acc[i]);
-                Serial.print(" ");
-            }
-            Serial.print(" | ");
-            for (int i = 0; i < 3; i++) {
-                Serial.print(muestraIMU.gyr[i]);
-                Serial.print(" ");
-            }
-            Serial.println();
-            xSemaphoreGive(mutexSerial);
-            contadorIMU++;
-        }
-    }
-}
+#define PIN_CS 10
 
 void setup() {
     Serial.begin(115200);
-    pinMode(LED_PIN_RGB_Red,   OUTPUT);
-    pinMode(LED_PIN_RGB_Green, OUTPUT);
-    pinMode(LED_PIN_RGB_Blue,  OUTPUT);
-    pinMode(BOOT_BTN, INPUT_PULLUP);
-    mutexSerial = xSemaphoreCreateMutex();
-    colaEMG = xQueueCreate(10, sizeof(MuestraEMG));
-    colaIMU = xQueueCreate(5,  sizeof(MuestraIMU));
-    xTaskCreate(tareaBoton,      "Boton",      2048, NULL, 1, NULL);
-    xTaskCreate(tareaSimulacion, "Simulacion", 2048, NULL, 3, NULL);
-    xTaskCreate(tareaIMU,        "IMU",        2048, NULL, 2, NULL);
-    xTaskCreate(tareaSerial,     "Serial",     2048, NULL, 2, NULL);
-    actualizarLED();
-    Serial.println("Sistema iniciado — STANDBY");
+    delay(3000);
+    Serial.println("Hola");
+
+    // Encender y resetear el ADS1298
+    pinMode(1, OUTPUT);   // PWDN_n //1
+    pinMode(2, OUTPUT);   // ADS_Reset_n //2
+    pinMode(5, INPUT);    // DRDY_n //5
+    pinMode(15, OUTPUT);  // Start_Data //15
+    digitalWrite(1, HIGH);
+    digitalWrite(15, LOW);
+    delay(100);
+    digitalWrite(2, LOW);
+    delay(10);
+    digitalWrite(2, HIGH);
+    delay(5);
+    Serial.println("Reset OK");
+
+    // Iniciar SPI
+    pinMode(PIN_CS, OUTPUT);
+    digitalWrite(PIN_CS, HIGH);
+    SPI.begin(12, 13, 11, 10); //12,13,11,10
+    Serial.println("SPI OK");
+
+    // Comando SDATAC
+    SPI.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE1));
+    digitalWrite(PIN_CS, LOW);
+    SPI.transfer(0x11);
+    digitalWrite(PIN_CS, HIGH);
+    SPI.endTransaction();
+    delay(10);
+    Serial.println("SDATAC OK");
+    
+
+    // RESET por comando SPI
+    SPI.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE1));
+    digitalWrite(PIN_CS, LOW);
+    SPI.transfer(0x06);  // RESET
+    digitalWrite(PIN_CS, HIGH);
+    SPI.endTransaction();
+    delay(100);
+
+    SPI.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE1));
+    digitalWrite(PIN_CS, LOW);
+    SPI.transfer(0x11);
+    digitalWrite(PIN_CS, HIGH);
+    SPI.endTransaction();
+    delay(10);
+
+    // Leer registro ID
+    SPI.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE1));
+    digitalWrite(PIN_CS, LOW);
+    SPI.transfer(0x20);
+    SPI.transfer(0x00);
+    uint8_t id = SPI.transfer(0x00);
+    digitalWrite(PIN_CS, HIGH);
+    SPI.endTransaction();
+
+    Serial.print("ID: 0x");
+    Serial.println(id, HEX);
+
+    //Escribir registro CONFIG1
+    SPI.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE1));
+    digitalWrite(PIN_CS, LOW);
+    SPI.transfer(0x41);  // WREG | CONFIG1
+    SPI.transfer(0x00);  // 1 registro
+    SPI.transfer(0x86);  // valor que quieres escribir
+    digitalWrite(PIN_CS, HIGH);
+    SPI.endTransaction();
+
+    // Leer CONFIG1 para verificar
+    SPI.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE1));
+    digitalWrite(PIN_CS, LOW);
+    SPI.transfer(0x21);  // RREG | 0x01
+    SPI.transfer(0x00);
+    uint8_t config1 = SPI.transfer(0x00);
+    digitalWrite(PIN_CS, HIGH);
+    SPI.endTransaction();
+
+    Serial.print("CONFIG1 leido: 0x");
+    Serial.println(config1, HEX);
+
+
+     //Mandar comando STOP
+    SPI.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE1));
+    digitalWrite(PIN_CS, LOW);
+    SPI.transfer(0x0A);  // STOP
+    digitalWrite(PIN_CS, HIGH);
+    SPI.endTransaction();
+
+    Serial.println("STOP OK");
+
+    //Mandar comando START
+    SPI.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE1));
+    digitalWrite(PIN_CS, LOW);
+    SPI.transfer(0x08);  // START
+    digitalWrite(PIN_CS, HIGH);
+    SPI.endTransaction();
+
+     Serial.println("START OK");
+
+    
 }
 
 void loop() {
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    while (digitalRead(5) == HIGH) { //chip avisa de datos listos, baja a low cada vez que hay una muestra
+        delay(10);
+    }
+    Serial.println("DRDY bajo - datos listos");
+
+    //Mandar comando RDATA
+    SPI.beginTransaction(SPISettings(500000, MSBFIRST, SPI_MODE1));
+    digitalWrite(PIN_CS, LOW);
+    SPI.transfer(0x12);  // RDATA
+
+    Serial.println("RDATA OK");
+
+    int numBytes = 27; // 3 bytes de estado + 8 canales * 3 bytes cada uno
+    uint8_t frame[numBytes];
+    for (int i = 0; i < numBytes; i++) {
+        frame[i] = SPI.transfer(0x00);
+    }
+    digitalWrite(PIN_CS, HIGH);
+    SPI.endTransaction();
+
+    Serial.println("Datos leidos:");
+    for (int i = 0; i < numBytes; i++) {
+        Serial.print(", 0x");
+        Serial.print(frame[i], HEX);
+        Serial.print("");
+    }
+    Serial.println();
+
+    //recorrer los canales
+    for (int ch = 0; ch < 8; ch++) {
+        int32_t value = (frame[3 + ch * 3] << 16) | (frame[4 + ch * 3] << 8) | frame[5 + ch * 3];
+        //cada canal 3 bytes por separado, lo juntamos desplazando y haciendo OR
+        if (value & 0x800000) { // num más pequeño
+            value |= 0xFF000000; // Extender el signo
+        }
+        
+        Serial.print("Canal ");
+        Serial.print(ch + 1);
+        Serial.print(": ");
+        Serial.println(value);
+    }
+
 }
+
