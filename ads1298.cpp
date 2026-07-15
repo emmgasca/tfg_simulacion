@@ -109,13 +109,13 @@ bool ADS1298 :: readChannels(int32_t canales[8]) {
             return false;
         }
 
-        uint8_t frame[25] = {0};
+        uint8_t frame[27] = {0};
         SPI.beginTransaction(_spiConfig);
         digitalWrite(_cs, LOW);
         delayMicroseconds(2);
         SPI.transfer(RDATA);
 
-        for (int i = 0; i < 25; ++i) {
+        for (int i = 0; i < 27; ++i) {
             frame[i] = SPI.transfer(0x00);
         }
 

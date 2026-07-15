@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <SPI.h>
 #include "ads1298.h"
+#include "hal.h"
 
 #define PIN_CS 10
 
@@ -10,16 +11,16 @@ void setup() {
     Serial.println("Hola");
 
     // Encender y resetear el ADS1298
-    pinMode(1, OUTPUT);   // PWDN_n //1
-    pinMode(2, OUTPUT);   // ADS_Reset_n //2
+    pinMode(7, OUTPUT);   // PWDN_n //1
+    pinMode(6, OUTPUT);   // ADS_Reset_n //2
     pinMode(5, INPUT);    // DRDY_n //5
-    pinMode(15, OUTPUT);  // Start_Data //15
-    digitalWrite(1, HIGH);
-    digitalWrite(15, LOW);
+    pinMode(8, OUTPUT);  // Start_Data //15
+    digitalWrite(7, HIGH);
+    digitalWrite(8, LOW);
     delay(100);
-    digitalWrite(2, LOW);
+    digitalWrite(6, LOW);
     delay(10);
-    digitalWrite(2, HIGH);
+    digitalWrite(6, HIGH);
     delay(5);
     Serial.println("Reset OK");
 
@@ -153,4 +154,3 @@ void loop() {
     }
 
 }
-

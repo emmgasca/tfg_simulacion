@@ -7,8 +7,8 @@
 // SELECCIÓN DE HARDWARE
 // ==========================================
 //#define BOARD_DEV_KIT      // placa de pruebas actual
-//#define PLACA // PCB definitiva (descomentar el martes)
-#define PLACA_2
+//#define PLACA_2
+#define PLACA
 // ==========================================
 // MAPEO DE PINES SEGÚN LA PLACA
 // ==========================================
@@ -39,9 +39,9 @@
 
     #define HAS_BOOT_BTN 1
 
-    constexpr uint8_t PIN_SPI_MOSI = GPIO_NUM_11;
-    constexpr uint8_t PIN_SPI_MISO = GPIO_NUM_13;
-    constexpr uint8_t PIN_SPI_SCK  = GPIO_NUM_12;
+    constexpr uint8_t FSSPI_MOSI = GPIO_NUM_11;
+    constexpr uint8_t FSSPI_MISO = GPIO_NUM_13;
+    constexpr uint8_t FSSPI_CLK  = GPIO_NUM_12;
     constexpr uint8_t IMU_SCL      = GPIO_NUM_2;
     constexpr uint8_t IMU_SDA      = GPIO_NUM_3;
   
