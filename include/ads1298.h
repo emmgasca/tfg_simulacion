@@ -77,168 +77,24 @@ public:
 
     bool begin();
 
-    void sendCommand(uint8_t cmd) {
-        SPI.beginTransaction(_spiConfig);
-        digitalWrite(_cs, LOW);
-        delayMicroseconds(2);
-        SPI.transfer(cmd);
-        delayMicroseconds(2);
-        digitalWrite(_cs, HIGH);
-        SPI.endTransaction();
-    }
+    void sendCommand(uint8_t cmd);
 
-    void reset() {
-        sendCommand(RESET);
-    }
+    void reset() ;
 
-    void wakeup() {
-        sendCommand(WAKEUP);
-    }
+    void wakeup();
 
-    void stopReadDataContinuous() {
-        sendCommand(SDATAC);
-    }
+    void stopReadDataContinuous() ;
 
-    void startReadDataContinuous() {
-        sendCommand(RDATAC);
-    }
+    void startReadDataContinuous();
 
-    void startConversion() {
-        digitalWrite(_start, HIGH);
-        delayMicroseconds(5);
-        digitalWrite(_start, LOW);
-        delayMicroseconds(5);
-        sendCommand(START);
-    }
+    void startConversion();
 
-    void writeRegister(uint8_t reg, uint8_t value) {
-        SPI.beginTransaction(_spiConfig);
-        digitalWrite(_cs, LOW);
-        delayMicroseconds(2);
-        SPI.transfer(WREG | (reg & 0x1F));
-        SPI.transfer(0x00);
-        SPI.transfer(value);
-        delayMicroseconds(2);
-        digitalWrite(_cs, HIGH);
-        SPI.endTransaction();
-    }
+    void writeRegister(uint8_t reg, uint8_t value);
 
-    uint8_t readRegister(uint8_t reg) {
-        uint8_t respuesta = 0x00;
-        for (int attempt = 0; attempt < 3; ++attempt) {
-            SPI.beginTransaction(_spiConfig);
-            digitalWrite(_cs, LOW);
-            delayMicroseconds(2);
-            SPI.transfer(RREG | (reg & 0x1F));
-            SPI.transfer(0x00);
-            delayMicroseconds(10);
-            respuesta = SPI.transfer(0x00);
-            delayMicroseconds(2);
-            digitalWrite(_cs, HIGH);
-            SPI.endTransaction();
-            if (respuesta != 0x00) {
-                break;
-            }
-            delay(1);
-        }
-        return respuesta;
-    }
+    uint8_t readRegister(uint8_t reg);
 
-    bool waitForDRDY(uint32_t timeoutMs = 20) {
-        uint32_t start = millis();
-        while (digitalRead(DRDY_n) == HIGH) {
-            if (millis() - start > timeoutMs) {
-                return false;
-            }
-            vTaskDelay(pdMS_TO_TICKS(1));
-        }
-        return true;
-    }
+    bool waitForDRDY(uint32_t timeoutMs = 20);
 
-    bool readChannels(int32_t canales[8]) {
-        if (!waitForDRDY()) {
-            return false;
-        }
-
-        uint8_t frame[25] = {0};
-        SPI.beginTransaction(_spiConfig);
-        digitalWrite(_cs, LOW);
-        delayMicroseconds(2);
-        SPI.transfer(RDATA);
-
-        for (int i = 0; i < 25; ++i) {
-            frame[i] = SPI.transfer(0x00);
-        }
-
-        delayMicroseconds(2);
-        digitalWrite(_cs, HIGH);
-        SPI.endTransaction();
-
-        if (frame[0] == 0x00 || frame[0] == 0xFF) {
-            return false;
-        }
-
-        bool hasMeaningfulData = false;
-        for (int ch = 0; ch < 8; ++ch) {
-            if (frame[1 + ch * 3] != 0x00 || frame[2 + ch * 3] != 0x00 || frame[3 + ch * 3] != 0x00) {
-                hasMeaningfulData = true;
-                break;
-            }
-        }
-        if (!hasMeaningfulData) {
-            return false;
-        }
-
-        for (int ch = 0; ch < 8; ++ch) {
-            uint8_t b0 = frame[1 + ch * 3];
-            uint8_t b1 = frame[2 + ch * 3];
-            uint8_t b2 = frame[3 + ch * 3];
-            canales[ch] = combine24bit(b0, b1, b2);
-        }
-
-        static uint32_t debugCount = 0;
-        if ((debugCount++ % 5) == 0) {
-            if (mutexSerial != NULL) {
-                xSemaphoreTake(mutexSerial, portMAX_DELAY);
-            }
-            Serial.print("[ADS] RAW:");
-            for (int i = 0; i < 25; ++i) {
-                Serial.printf(" %02X", frame[i]);
-            }
-            Serial.print(" | CH:");
-            for (int ch = 0; ch < 8; ++ch) {
-                Serial.printf(" %ld", (long)canales[ch]);
-            }
-            Serial.println();
-            if (mutexSerial != NULL) {
-                xSemaphoreGive(mutexSerial);
-            }
-        }
-
-        return true;
-    }
-
-    void conversion() {
-        writeRegister(CONFIG1, 0x96);
-        uint8_t comprobar = readRegister(CONFIG1);
-        Serial.print("CONFIG1 leído: ");
-        Serial.println(comprobar, HEX);
-
-        writeRegister(CONFIG2, 0xC0);
-        comprobar = readRegister(CONFIG2);
-        Serial.print("CONFIG2 leído: ");
-        Serial.println(comprobar, HEX);
-
-        writeRegister(CONFIG3, 0xE0);
-        comprobar = readRegister(CONFIG3);
-        Serial.print("CONFIG3 leído: ");
-        Serial.println(comprobar, HEX);
-
-        writeRegister(LOFF, 0x00);
-        writeRegister(ADSGPIO, 0x00);
-
-        for (uint8_t ch = 0; ch < 8; ch++) {
-            writeRegister(CH1SET + ch, 0x60);
-        }
-    }
+    bool readChannels(int32_t canales[8]);
+    void conversion();
 };
