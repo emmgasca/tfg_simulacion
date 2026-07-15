@@ -55,6 +55,7 @@ private:
     uint8_t _reset;
     uint8_t _pwdn;
     uint8_t _start;
+    uint8_t _drdy;
     SPISettings _spiConfig{1000000, MSBFIRST, SPI_MODE1};
 
     static int32_t combine24bit(uint8_t b0, uint8_t b1, uint8_t b2) {
@@ -66,40 +67,15 @@ private:
     }
 
 public:
-    ADS1298(uint8_t cs, uint8_t reset, uint8_t pwdn, uint8_t start) {
+    ADS1298(uint8_t cs, uint8_t reset, uint8_t pwdn, uint8_t start, uint8_t DRDY_n) {
         _cs = cs;
         _reset = reset;
         _pwdn = pwdn;
         _start = start;
+        _drdy = DRDY_n;
     }
 
-    bool begin() {
-        pinMode(_cs, OUTPUT);
-        pinMode(_reset, OUTPUT);
-        pinMode(_pwdn, OUTPUT);
-        pinMode(_start, OUTPUT);
-        pinMode(DRDY_n, INPUT);
-
-        digitalWrite(_cs, HIGH);
-        digitalWrite(_pwdn, HIGH);
-        digitalWrite(_start, LOW);
-
-        digitalWrite(_reset, LOW);
-        delayMicroseconds(10);
-        digitalWrite(_reset, HIGH);
-        delay(4);
-
-        SPI.begin(FSSPI_CLK, FSSPI_MISO, FSSPI_MOSI, FSSPI_CSO_n);
-        reset();
-        delay(2);
-        wakeup();
-        delay(2);
-        stopReadDataContinuous();
-        conversion();
-        startConversion();
-        delay(5);
-        return true;
-    }
+    bool begin();
 
     void sendCommand(uint8_t cmd) {
         SPI.beginTransaction(_spiConfig);
