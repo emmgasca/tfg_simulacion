@@ -129,7 +129,7 @@ bool ADS1298 :: readChannels(int32_t canales[8]) {
 
         bool hasMeaningfulData = false;
         for (int ch = 0; ch < 8; ++ch) {
-            if (frame[1 + ch * 3] != 0x00 || frame[2 + ch * 3] != 0x00 || frame[3 + ch * 3] != 0x00) {
+            if (frame[3+ ch * 3] != 0x00 || frame[4+ ch * 3] != 0x00 || frame[5+ ch * 3] != 0x00) {
                 hasMeaningfulData = true;
                 break;
             }
@@ -139,9 +139,9 @@ bool ADS1298 :: readChannels(int32_t canales[8]) {
         }
 
         for (int ch = 0; ch < 8; ++ch) {
-            uint8_t b0 = frame[1 + ch * 3];
-            uint8_t b1 = frame[2 + ch * 3];
-            uint8_t b2 = frame[3 + ch * 3];
+            uint8_t b0 = frame[3+ ch * 3];
+            uint8_t b1 = frame[4+ ch * 3];
+            uint8_t b2 = frame[5+ ch * 3];
             canales[ch] = combine24bit(b0, b1, b2);
         }
 
