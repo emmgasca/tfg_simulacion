@@ -30,6 +30,19 @@ void setup() {
 }
 
 void loop() {
-    
-    vTaskDelay(pdMS_TO_TICKS(1000));
+    int32_t canales[8];
+    bool leido = ads.readChannels(canales);
+
+    if (leido) {
+        Serial.print("Canales:");
+        for (int ch = 0; ch < 8; ch++) {
+            Serial.print(" ");
+            Serial.print(canales[ch]);
+        }
+        Serial.println();
+    } else {
+        Serial.println("Lectura fallida");
+    }
+
+    delay(200);
 }
