@@ -172,8 +172,8 @@ void ADS1298:: conversion() {
         Serial.print("CONFIG1 leído: ");
         Serial.println(comprobar, HEX);
 
-        //activo el generador intenrno de señal de test del chip
-        writeRegister(CONFIG2, 0xD0);
+        //apago generador de test
+        writeRegister(CONFIG2, 0xC0);
         comprobar = readRegister(CONFIG2);
         Serial.print("CONFIG2 leído: ");
         Serial.println(comprobar, HEX);
@@ -187,6 +187,6 @@ void ADS1298:: conversion() {
         writeRegister(ADSGPIO, 0x00);
 
         for (uint8_t ch = 0; ch < 8; ch++) {
-            writeRegister(CH1SET + ch, 0x05);
+            writeRegister(CH1SET + ch, 0x00);
         }
     }
