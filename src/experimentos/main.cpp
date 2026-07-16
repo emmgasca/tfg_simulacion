@@ -34,15 +34,9 @@ void loop() {
     bool leido = ads.readChannels(canales);
 
     if (leido) {
-        Serial.print("Canales:");
-        for (int ch = 0; ch < 8; ch++) {
-            Serial.print(" ");
-            Serial.print(canales[ch]);
-        }
-        Serial.println();
-    } else {
-        Serial.println("Lectura fallida");
+        Serial.print(">canal1:");
+        Serial.println(canales[0]);
     }
 
-    delay(200);
+    delay(5);
 }
