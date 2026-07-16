@@ -100,7 +100,7 @@ bool ADS1298:: waitForDRDY (uint32_t timeoutMs) {
             if (millis() - start > timeoutMs) {
                 return false;
             }
-            vTaskDelay(pdMS_TO_TICKS(1));
+            delayMicroseconds(100);
         }
         return true;
     }
@@ -144,7 +144,7 @@ bool ADS1298 :: readChannels(int32_t canales[8]) {
             uint8_t b2 = frame[5+ ch * 3];
             canales[ch] = combine24bit(b0, b1, b2);
         }
-/*
+
         static uint32_t debugCount = 0;
         if ((debugCount++ % 5) == 0) {
             if (mutexSerial != NULL) {
@@ -164,7 +164,7 @@ bool ADS1298 :: readChannels(int32_t canales[8]) {
             }
         }
 
-        return true; */
+        return true; 
     } 
 void ADS1298:: conversion() {
         writeRegister(CONFIG1, 0x96);
