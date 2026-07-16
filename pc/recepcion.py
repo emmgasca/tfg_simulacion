@@ -1,3 +1,4 @@
+
 import asyncio
 from bleak import BleakClient
 import struct
@@ -16,4 +17,3 @@ async def main():
         await asyncio.sleep(5)
 
 asyncio.run(main())
-
