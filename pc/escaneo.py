@@ -2,8 +2,8 @@ import asyncio
 from bleak import BleakScanner
 
 async def main():
-    devices = await BleakScanner.discover()
-    for device in devices:
-        print(device.name, device.address)
+    dispositivos_encontrados = await BleakScanner.discover()
+    for dispositivo in dispositivos_encontrados:
+        print(dispositivo.name, dispositivo.address)
 
 asyncio.run(main())
