@@ -150,7 +150,7 @@ bool ADS1298 :: readChannels(int32_t canales[8]) {
             if (mutexSerial != NULL) {
                 xSemaphoreTake(mutexSerial, portMAX_DELAY);
             }
-            Serial.print("[ADS] RAW:");
+            Serial.print("Bytes crudos:");
             for (int i = 0; i < 25; ++i) {
                 Serial.printf(" %02X", frame[i]);
             }
@@ -172,7 +172,8 @@ void ADS1298:: conversion() {
         Serial.print("CONFIG1 leído: ");
         Serial.println(comprobar, HEX);
 
-        writeRegister(CONFIG2, 0xC0);
+        //activo el generador intenrno de señal de test del chip
+        writeRegister(CONFIG2, 0xD0);
         comprobar = readRegister(CONFIG2);
         Serial.print("CONFIG2 leído: ");
         Serial.println(comprobar, HEX);
@@ -186,6 +187,6 @@ void ADS1298:: conversion() {
         writeRegister(ADSGPIO, 0x00);
 
         for (uint8_t ch = 0; ch < 8; ch++) {
-            writeRegister(CH1SET + ch, 0x60);
+            writeRegister(CH1SET + ch, 0x05);
         }
     }
