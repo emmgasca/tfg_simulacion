@@ -1,6 +1,7 @@
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 
+
 #define SERVICE_EMG     "12345678-1234-1234-1234-123456789abc"
 #define SERVICE_IMU     "87654321-1234-1234-1234-123456789abc"
 #define CHAR_EMG_DATA  "aaaaaaaa-1234-1234-1234-123456789abc"
