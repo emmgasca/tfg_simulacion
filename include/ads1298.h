@@ -75,26 +75,27 @@ public:
         _drdy = DRDY_n;
     }
 
-    bool begin();
+bool begin();
 
-    void sendCommand(uint8_t cmd);
+void sendCommand(uint8_t cmd);
 
-    void reset() ;
+void reset() ;
 
-    void wakeup();
+void wakeup();
 
-    void stopReadDataContinuous() ;
+void stopReadDataContinuous() ;
 
-    void startReadDataContinuous();
+void startReadDataContinuous();
 
-    void startConversion();
+void startConversion();
 
-    void writeRegister(uint8_t reg, uint8_t value);
+void writeRegister(uint8_t reg, uint8_t value);
 
-    uint8_t readRegister(uint8_t reg);
+uint8_t readRegister(uint8_t reg);
 
-    bool waitForDRDY(uint32_t timeoutMs = 20);
+bool waitForDRDY(uint32_t timeoutMs = 20);
 
-    bool readChannels(int32_t canales[8]);
-    void conversion();
+bool readChannels(int32_t canales[8]);
+void conversion();
 };
+extern ADS1298 ads;

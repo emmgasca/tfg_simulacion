@@ -1,7 +1,7 @@
 #include <Arduino.h>
 #include <NimBLEDevice.h>
 #include "hal.h"
-
+#include "ads1298.h"
 
 #define SERVICE_EMG     "12345678-1234-1234-1234-123456789abc"
 #define SERVICE_IMU     "87654321-1234-1234-1234-123456789abc"
@@ -18,7 +18,7 @@ void taskIMU(void* param);
 void taskBLE(void* param);
 
 void bleSetup(){
-    queueEMG = xQueueCreate(10, sizeof(float));
+    queueEMG = xQueueCreate(10, sizeof(int32_t)*8);
     queueIMU = xQueueCreate(10, sizeof(float) * 3);
 
     // Configurar pines LED
@@ -35,8 +35,11 @@ void bleSetup(){
 }
 void taskEMG (void* param){
     while(true){
-        float muestraEMG = sin(millis() / 1000.0f);
-        xQueueSend(queueEMG, &muestraEMG, 0);
+       int32_t canales[8];
+        if (ads.readChannels(canales)) {
+             xQueueSend(queueEMG, canales,0);
+
+             }
         vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
@@ -83,11 +86,11 @@ void taskBLE (void* param){
 
 
 
-        float emg;
+        int32_t emg[8];
         bool enviadoEMG = false;
 
-        if(xQueueReceive(queueEMG, &emg,0)){
-            pCharEMGData->setValue((uint8_t*)&emg, sizeof(float));
+        if(xQueueReceive(queueEMG, emg,0)){
+            pCharEMGData->setValue((uint8_t*)&emg, sizeof(int32_t)*8);
             pCharEMGData->notify();
             enviadoEMG = true;
         }

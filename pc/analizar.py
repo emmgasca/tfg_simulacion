@@ -8,8 +8,12 @@ print(tabla_emg)
 FRECUENCIA_MUESTREO = 100
 tiempo = np.arange(len(tabla_emg)) / FRECUENCIA_MUESTREO
 
-plt.plot(tiempo, tabla_emg["emg"])
+for columna in tabla_emg.columns:
+    plt.plot(tiempo, tabla_emg[columna], label=columna)
+
+
 plt.xlabel("tiempo (s)")
 plt.ylabel("valor EMG")
-plt.title("Señal capturada")
+plt.title("Señal capturada - 8 canales")
+
 plt.show()
