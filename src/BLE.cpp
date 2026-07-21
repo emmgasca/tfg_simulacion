@@ -90,7 +90,7 @@ void taskBLE (void* param){
         bool enviadoEMG = false;
 
         if(xQueueReceive(queueEMG, emg,0)){
-            pCharEMGData->setValue((uint8_t*)&emg, sizeof(int32_t)*8);
+            pCharEMGData->setValue((uint8_t*)emg, sizeof(int32_t)*8);
             pCharEMGData->notify();
             enviadoEMG = true;
         }
@@ -110,7 +110,7 @@ void taskBLE (void* param){
             digitalWrite(LED_PIN_RGB_Red, LOW);
         }
 
-        vTaskDelay(pdMS_TO_TICKS(10));
+        vTaskDelay(pdMS_TO_TICKS(5));
 
         
     }

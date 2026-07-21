@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 tabla_emg = pd.read_parquet("captura_emg.parquet")
 print(tabla_emg)
 
-FRECUENCIA_MUESTREO = 100
+FRECUENCIA_MUESTREO = 192
 tiempo = np.arange(len(tabla_emg)) / FRECUENCIA_MUESTREO
 
 fig = go.Figure()
