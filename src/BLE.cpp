@@ -31,10 +31,10 @@ void bleSetup(){
     // Configurar pines LED
     pinMode(LED_PIN_RGB_Red, OUTPUT);
     pinMode(LED_PIN_RGB_Blue, OUTPUT);
-    pinMode(LED_PIN_RGB_Green, OUTPUT);
+    //pinMode(LED_PIN_RGB_Green, OUTPUT);
     digitalWrite(LED_PIN_RGB_Red, LOW);
-    digitalWrite(LED_PIN_RGB_Blue, LOW);
-    digitalWrite(LED_PIN_RGB_Green, LOW);
+    digitalWrite(LED_PIN_RGB_Blue, HIGH);
+    //digitalWrite(LED_PIN_RGB_Green, LOW);
 
     xTaskCreate(taskEMG, "taskEMG", 2048, NULL, 1, NULL);
     xTaskCreate(taskIMU, "taskIMU", 2048, NULL, 1, NULL);

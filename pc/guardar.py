@@ -14,7 +14,7 @@ async def main():
     async with BleakClient(DIRECCION_PLACA) as client:
         print(f"Conectado al dispositivo BLE: {client.is_connected}")
         await client.start_notify(CARACTERISTICA_EMG, cuando_llega_dato)
-        await asyncio.sleep(10)
+        await asyncio.sleep(3)
 
     columnas = ["ch1", "ch2","ch3","ch4","ch5","ch6","ch7","ch8"]
     tabla_emg = pd.DataFrame(muestras_emg,columns=columnas)
