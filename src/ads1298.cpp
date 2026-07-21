@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <SPI.h>
+#include <cstring>
 #include "ads1298.h"
 #include "hal.h"
 
@@ -104,18 +105,19 @@ bool ADS1298:: waitForDRDY (uint32_t timeoutMs) {
         }
         return true;
     }
-bool ADS1298 :: readChannels(int32_t canales[8]) {
+bool ADS1298 :: readChannels(uint8_t muestra[BYTES_POR_MUESTRA]) {
         if (!waitForDRDY()) {
             return false;
         }
 
-        uint8_t frame[27] = {0};
+        // Frame SPI completo: 3 bytes de status + 8 canales x 3 bytes = 27 bytes.
+        uint8_t frame[3 + BYTES_POR_MUESTRA] = {0};
         SPI.beginTransaction(_spiConfig);
         digitalWrite(_cs, LOW);
         delayMicroseconds(2);
         SPI.transfer(RDATA);
 
-        for (int i = 0; i < 27; ++i) {
+        for (int i = 0; i < 3 + BYTES_POR_MUESTRA; ++i) {
             frame[i] = SPI.transfer(0x00);
         }
 
@@ -128,8 +130,8 @@ bool ADS1298 :: readChannels(int32_t canales[8]) {
         }
 
         bool hasMeaningfulData = false;
-        for (int ch = 0; ch < 8; ++ch) {
-            if (frame[3+ ch * 3] != 0x00 || frame[4+ ch * 3] != 0x00 || frame[5+ ch * 3] != 0x00) {
+        for (int i = 3; i < 3 + BYTES_POR_MUESTRA; ++i) {
+            if (frame[i] != 0x00) {
                 hasMeaningfulData = true;
                 break;
             }
@@ -138,25 +140,22 @@ bool ADS1298 :: readChannels(int32_t canales[8]) {
             return false;
         }
 
-        for (int ch = 0; ch < 8; ++ch) {
-            uint8_t b0 = frame[3+ ch * 3];
-            uint8_t b1 = frame[4+ ch * 3];
-            uint8_t b2 = frame[5+ ch * 3];
-            canales[ch] = combine24bit(b0, b1, b2);
-        }
+        // Se descartan los 3 bytes de status; se conservan los 24 bytes de canales tal cual.
+        memcpy(muestra, frame + 3, BYTES_POR_MUESTRA);
 
         static uint32_t debugCount = 0;
-        if ((debugCount++ % 5) == 0) {
+        if ((debugCount++ % 200) == 0) {
             if (mutexSerial != NULL) {
                 xSemaphoreTake(mutexSerial, portMAX_DELAY);
             }
             Serial.print("Bytes crudos:");
-            for (int i = 0; i < 25; ++i) {
+            for (int i = 0; i < 3 + BYTES_POR_MUESTRA; ++i) {
                 Serial.printf(" %02X", frame[i]);
             }
             Serial.print(" | CH:");
-            for (int ch = 0; ch < 8; ++ch) {
-                Serial.printf(" %ld", (long)canales[ch]);
+            for (int ch = 0; ch < NUM_CANALES; ++ch) {
+                int32_t valor = combine24bit(muestra[ch * 3], muestra[ch * 3 + 1], muestra[ch * 3 + 2]);
+                Serial.printf(" %ld", (long)valor);
             }
             Serial.println();
             if (mutexSerial != NULL) {
@@ -164,8 +163,8 @@ bool ADS1298 :: readChannels(int32_t canales[8]) {
             }
         }
 
-        return true; 
-    } 
+        return true;
+    }
 void ADS1298:: conversion() {
         writeRegister(CONFIG1, 0x96);
         uint8_t comprobar = readRegister(CONFIG1);

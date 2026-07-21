@@ -67,6 +67,12 @@ private:
     }
 
 public:
+    // Estructura de una muestra tal como la entrega el ADS1298 por SPI:
+    // 3 bytes de status (se descartan) + 3 bytes por canal x 8 canales.
+    static constexpr uint8_t NUM_CANALES = 8;
+    static constexpr uint8_t BYTES_POR_CANAL = 3;
+    static constexpr uint8_t BYTES_POR_MUESTRA = NUM_CANALES * BYTES_POR_CANAL; // 24
+
     ADS1298(uint8_t cs, uint8_t reset, uint8_t pwdn, uint8_t start, uint8_t DRDY_n) {
         _cs = cs;
         _reset = reset;
@@ -95,7 +101,9 @@ uint8_t readRegister(uint8_t reg);
 
 bool waitForDRDY(uint32_t timeoutMs = 20);
 
-bool readChannels(int32_t canales[8]);
+// Lee una muestra y la deja en `muestra` como 8 canales x 3 bytes crudos
+// (los 3 bytes de status del frame SPI se descartan).
+bool readChannels(uint8_t muestra[BYTES_POR_MUESTRA]);
 void conversion();
 };
 extern ADS1298 ads;
