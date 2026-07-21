@@ -5,7 +5,7 @@ import plotly.graph_objects as go
 tabla_emg = pd.read_parquet("captura_emg.parquet")
 print(tabla_emg)
 
-FRECUENCIA_MUESTREO = 100
+FRECUENCIA_MUESTREO = 2000
 tiempo = np.arange(len(tabla_emg)) / FRECUENCIA_MUESTREO
 
 fig = go.Figure()
@@ -19,4 +19,5 @@ fig.update_layout(
     yaxis_title="valor EMG"
 )
 
+fig.write_html("C:/Users/emmag/Documents/PlatformIO/Projects/TFG_simulacion/A.html")
 fig.show()

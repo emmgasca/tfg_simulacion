@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <NimBLEDevice.h>
+#include <cstring>
 #include "hal.h"
 #include "ads1298.h"
 
@@ -10,6 +11,11 @@
 #define CHAR_IMU_DATA   "cccccccc-1234-1234-1234-123456789abc"
 #define CHAR_IMU_CONFIG   "dddddddd-1234-1234-1234-123456789abc"
 
+// Cuántas muestras EMG se agrupan en cada notify BLE.
+// 10 muestras x 24 bytes = 240 bytes, dentro del MTU negociado (247 -> 244 bytes útiles).
+static constexpr uint8_t MUESTRAS_POR_PAQUETE = 10;
+static constexpr size_t BYTES_PAQUETE_EMG = MUESTRAS_POR_PAQUETE * ADS1298::BYTES_POR_MUESTRA;
+
 QueueHandle_t queueEMG;
 QueueHandle_t queueIMU;
 
@@ -18,29 +24,51 @@ void taskIMU(void* param);
 void taskBLE(void* param);
 
 void bleSetup(){
-    queueEMG = xQueueCreate(10, sizeof(int32_t)*8);
+    // Cola con margen para absorber ráfagas sin perder muestras si el consumidor BLE se retrasa.
+    queueEMG = xQueueCreate(60, ADS1298::BYTES_POR_MUESTRA);
     queueIMU = xQueueCreate(10, sizeof(float) * 3);
 
     // Configurar pines LED
     pinMode(LED_PIN_RGB_Red, OUTPUT);
     pinMode(LED_PIN_RGB_Blue, OUTPUT);
-    pinMode(LED_PIN_RGB_Green, OUTPUT);
+    //pinMode(LED_PIN_RGB_Green, OUTPUT);
     digitalWrite(LED_PIN_RGB_Red, LOW);
-    digitalWrite(LED_PIN_RGB_Blue, LOW);
-    digitalWrite(LED_PIN_RGB_Green, LOW);
+    digitalWrite(LED_PIN_RGB_Blue, HIGH);
+    //digitalWrite(LED_PIN_RGB_Green, LOW);
 
     xTaskCreate(taskEMG, "taskEMG", 2048, NULL, 1, NULL);
     xTaskCreate(taskIMU, "taskIMU", 2048, NULL, 1, NULL);
-    xTaskCreate(taskBLE, "taskBLE", 4096, NULL, 1, NULL);
+    xTaskCreate(taskBLE, "taskBLE", 8192, NULL, 1, NULL);
 }
 void taskEMG (void* param){
+    uint32_t muestrasEsteSegundo = 0;
+    uint32_t ultimoReporte = millis();
     while(true){
-       int32_t canales[8];
-        if (ads.readChannels(canales)) {
-             xQueueSend(queueEMG, canales,0);
+        uint8_t muestra[ADS1298::BYTES_POR_MUESTRA];
+        if (ads.readChannels(muestra)) {
+            // Envío bloqueante (con margen): si la cola está llena se espera en vez de
+            // descartar la muestra silenciosamente. Solo se pierde si el consumidor BLE
+            // lleva más de 50 ms sin drenar (p. ej. desconectado).
+            xQueueSend(queueEMG, muestra, pdMS_TO_TICKS(50));
+            muestrasEsteSegundo++;
+            // Sin delay aquí: el ritmo de muestreo lo marca DRDY (el propio ADC),
+            // no una espera fija de software. Un delay fijo aquí desacopla la
+            // captura del reloj real del ADS1298 y submuestrea/alía la señal.
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(1));
+        }
 
-             }
-        vTaskDelay(pdMS_TO_TICKS(5));
+        if (millis() - ultimoReporte >= 1000) {
+            if (mutexSerial != NULL) {
+                xSemaphoreTake(mutexSerial, portMAX_DELAY);
+            }
+            Serial.printf("Tasa real EMG: %lu muestras/s\n", (unsigned long)muestrasEsteSegundo);
+            if (mutexSerial != NULL) {
+                xSemaphoreGive(mutexSerial);
+            }
+            muestrasEsteSegundo = 0;
+            ultimoReporte = millis();
+        }
     }
 }
 void taskIMU (void* param){
@@ -54,6 +82,8 @@ void taskIMU (void* param){
     }
 }
 void taskBLE (void* param){
+    // MTU ampliado para poder enviar el buffer agrupado de muestras en un solo notify.
+    //NimBLEDevice::setMTU(247);
     //Iniciar NimBLE
     NimBLEDevice::init("ESP32");
     //Crear Servidor BLE
@@ -75,6 +105,10 @@ void taskBLE (void* param){
     pServiceIMU->start();
     NimBLEDevice::getAdvertising()->start();
 
+    // Buffer donde se agrupan MUESTRAS_POR_PAQUETE muestras EMG antes de notificar.
+    uint8_t bufferEMG[BYTES_PAQUETE_EMG];
+    uint8_t indiceEMG = 0;
+
     while(true){
 
         // ====== LED AZUL: Conectado BLE ======
@@ -86,13 +120,20 @@ void taskBLE (void* param){
 
 
 
-        int32_t emg[8];
+        uint8_t muestra[ADS1298::BYTES_POR_MUESTRA];
         bool enviadoEMG = false;
 
-        if(xQueueReceive(queueEMG, emg,0)){
-            pCharEMGData->setValue((uint8_t*)emg, sizeof(int32_t)*8);
-            pCharEMGData->notify();
-            enviadoEMG = true;
+        // Se drena toda la cola disponible (no solo una muestra) para no acumular
+        // retraso si llegaron varias muestras desde la última vuelta del bucle.
+        while (xQueueReceive(queueEMG, muestra, 0) == pdTRUE) {
+            memcpy(&bufferEMG[indiceEMG * ADS1298::BYTES_POR_MUESTRA], muestra, ADS1298::BYTES_POR_MUESTRA);
+            indiceEMG++;
+            if (indiceEMG >= MUESTRAS_POR_PAQUETE) {
+                pCharEMGData->setValue(bufferEMG, BYTES_PAQUETE_EMG);
+                pCharEMGData->notify();
+                indiceEMG = 0;
+                enviadoEMG = true;
+            }
         }
         float imu[3];
         bool enviadoIMU = false;

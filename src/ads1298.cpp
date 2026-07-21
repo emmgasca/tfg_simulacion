@@ -1,5 +1,6 @@
 #include <Arduino.h>
 #include <SPI.h>
+#include <cstring>
 #include "ads1298.h"
 #include "hal.h"
 
@@ -104,18 +105,19 @@ bool ADS1298:: waitForDRDY (uint32_t timeoutMs) {
         }
         return true;
     }
-bool ADS1298 :: readChannels(int32_t canales[8]) {
+bool ADS1298 :: readChannels(uint8_t muestra[BYTES_POR_MUESTRA]) {
         if (!waitForDRDY()) {
             return false;
         }
 
-        uint8_t frame[27] = {0};
+        // Frame SPI completo: 3 bytes de status + 8 canales x 3 bytes = 27 bytes.
+        uint8_t frame[3 + BYTES_POR_MUESTRA] = {0};
         SPI.beginTransaction(_spiConfig);
         digitalWrite(_cs, LOW);
         delayMicroseconds(2);
         SPI.transfer(RDATA);
 
-        for (int i = 0; i < 27; ++i) {
+        for (int i = 0; i < 3 + BYTES_POR_MUESTRA; ++i) {
             frame[i] = SPI.transfer(0x00);
         }
 
@@ -123,13 +125,16 @@ bool ADS1298 :: readChannels(int32_t canales[8]) {
         digitalWrite(_cs, HIGH);
         SPI.endTransaction();
 
-        if (frame[0] == 0x00 || frame[0] == 0xFF) {
+        // Sincronismo de trama: el status word siempre empieza en "1100" (nibble alto
+        // de frame[0] = 0xC), según la Figura 61 del datasheet del ADS1298. Si no es así,
+        // la trama SPI está desalineada (o son datos basura) y se descarta.
+        if ((frame[0] & 0xF0) != 0xC0) {
             return false;
         }
 
         bool hasMeaningfulData = false;
-        for (int ch = 0; ch < 8; ++ch) {
-            if (frame[3+ ch * 3] != 0x00 || frame[4+ ch * 3] != 0x00 || frame[5+ ch * 3] != 0x00) {
+        for (int i = 3; i < 3 + BYTES_POR_MUESTRA; ++i) {
+            if (frame[i] != 0x00) {
                 hasMeaningfulData = true;
                 break;
             }
@@ -138,25 +143,22 @@ bool ADS1298 :: readChannels(int32_t canales[8]) {
             return false;
         }
 
-        for (int ch = 0; ch < 8; ++ch) {
-            uint8_t b0 = frame[3+ ch * 3];
-            uint8_t b1 = frame[4+ ch * 3];
-            uint8_t b2 = frame[5+ ch * 3];
-            canales[ch] = combine24bit(b0, b1, b2);
-        }
+        // Se descartan los 3 bytes de status; se conservan los 24 bytes de canales tal cual.
+        memcpy(muestra, frame + 3, BYTES_POR_MUESTRA);
 
         static uint32_t debugCount = 0;
-        if ((debugCount++ % 5) == 0) {
+        if ((debugCount++ % 200) == 0) {
             if (mutexSerial != NULL) {
                 xSemaphoreTake(mutexSerial, portMAX_DELAY);
             }
             Serial.print("Bytes crudos:");
-            for (int i = 0; i < 25; ++i) {
+            for (int i = 0; i < 3 + BYTES_POR_MUESTRA; ++i) {
                 Serial.printf(" %02X", frame[i]);
             }
             Serial.print(" | CH:");
-            for (int ch = 0; ch < 8; ++ch) {
-                Serial.printf(" %ld", (long)canales[ch]);
+            for (int ch = 0; ch < NUM_CANALES; ++ch) {
+                int32_t valor = combine24bit(muestra[ch * 3], muestra[ch * 3 + 1], muestra[ch * 3 + 2]);
+                Serial.printf(" %ld", (long)valor);
             }
             Serial.println();
             if (mutexSerial != NULL) {
@@ -164,21 +166,21 @@ bool ADS1298 :: readChannels(int32_t canales[8]) {
             }
         }
 
-        return true; 
-    } 
+        return true;
+    }
 void ADS1298:: conversion() {
-        writeRegister(CONFIG1, 0x96);
+        writeRegister(CONFIG1, 0x84);
         uint8_t comprobar = readRegister(CONFIG1);
         Serial.print("CONFIG1 leído: ");
         Serial.println(comprobar, HEX);
 
         //apago generador de test
-        writeRegister(CONFIG2, 0xC0);
+        writeRegister(CONFIG2, 0x00);
         comprobar = readRegister(CONFIG2);
         Serial.print("CONFIG2 leído: ");
         Serial.println(comprobar, HEX);
 
-        writeRegister(CONFIG3, 0xE0);
+        writeRegister(CONFIG3, 0b11001001);
         comprobar = readRegister(CONFIG3);
         Serial.print("CONFIG3 leído: ");
         Serial.println(comprobar, HEX);
@@ -187,6 +189,9 @@ void ADS1298:: conversion() {
         writeRegister(ADSGPIO, 0x00);
 
         for (uint8_t ch = 0; ch < 8; ch++) {
-            writeRegister(CH1SET + ch, 0x10);
+            writeRegister(CH1SET + ch, 0x00);
         }
+
+        writeRegister(RLD_SENSN, 0x00);
+        writeRegister(RLD_SENSP, 0x00);
     }
