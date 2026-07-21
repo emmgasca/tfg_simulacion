@@ -111,6 +111,7 @@ void taskBLE (void* param){
         }
 
         vTaskDelay(pdMS_TO_TICKS(5));
+        
 
         
     }
