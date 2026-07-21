@@ -38,9 +38,11 @@ void bleSetup(){
 
     xTaskCreate(taskEMG, "taskEMG", 2048, NULL, 1, NULL);
     xTaskCreate(taskIMU, "taskIMU", 2048, NULL, 1, NULL);
-    xTaskCreate(taskBLE, "taskBLE", 4096, NULL, 1, NULL);
+    xTaskCreate(taskBLE, "taskBLE", 8192, NULL, 1, NULL);
 }
 void taskEMG (void* param){
+    uint32_t muestrasEsteSegundo = 0;
+    uint32_t ultimoReporte = millis();
     while(true){
         uint8_t muestra[ADS1298::BYTES_POR_MUESTRA];
         if (ads.readChannels(muestra)) {
@@ -48,8 +50,25 @@ void taskEMG (void* param){
             // descartar la muestra silenciosamente. Solo se pierde si el consumidor BLE
             // lleva más de 50 ms sin drenar (p. ej. desconectado).
             xQueueSend(queueEMG, muestra, pdMS_TO_TICKS(50));
+            muestrasEsteSegundo++;
+            // Sin delay aquí: el ritmo de muestreo lo marca DRDY (el propio ADC),
+            // no una espera fija de software. Un delay fijo aquí desacopla la
+            // captura del reloj real del ADS1298 y submuestrea/alía la señal.
+        } else {
+            vTaskDelay(pdMS_TO_TICKS(1));
         }
-        vTaskDelay(pdMS_TO_TICKS(5));
+
+        if (millis() - ultimoReporte >= 1000) {
+            if (mutexSerial != NULL) {
+                xSemaphoreTake(mutexSerial, portMAX_DELAY);
+            }
+            Serial.printf("Tasa real EMG: %lu muestras/s\n", (unsigned long)muestrasEsteSegundo);
+            if (mutexSerial != NULL) {
+                xSemaphoreGive(mutexSerial);
+            }
+            muestrasEsteSegundo = 0;
+            ultimoReporte = millis();
+        }
     }
 }
 void taskIMU (void* param){
@@ -64,7 +83,7 @@ void taskIMU (void* param){
 }
 void taskBLE (void* param){
     // MTU ampliado para poder enviar el buffer agrupado de muestras en un solo notify.
-    NimBLEDevice::setMTU(247);
+    //NimBLEDevice::setMTU(247);
     //Iniciar NimBLE
     NimBLEDevice::init("ESP32");
     //Crear Servidor BLE

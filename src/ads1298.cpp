@@ -125,7 +125,10 @@ bool ADS1298 :: readChannels(uint8_t muestra[BYTES_POR_MUESTRA]) {
         digitalWrite(_cs, HIGH);
         SPI.endTransaction();
 
-        if (frame[0] == 0x00 || frame[0] == 0xFF) {
+        // Sincronismo de trama: el status word siempre empieza en "1100" (nibble alto
+        // de frame[0] = 0xC), según la Figura 61 del datasheet del ADS1298. Si no es así,
+        // la trama SPI está desalineada (o son datos basura) y se descarta.
+        if ((frame[0] & 0xF0) != 0xC0) {
             return false;
         }
 
@@ -166,18 +169,18 @@ bool ADS1298 :: readChannels(uint8_t muestra[BYTES_POR_MUESTRA]) {
         return true;
     }
 void ADS1298:: conversion() {
-        writeRegister(CONFIG1, 0x96);
+        writeRegister(CONFIG1, 0x84);
         uint8_t comprobar = readRegister(CONFIG1);
         Serial.print("CONFIG1 leído: ");
         Serial.println(comprobar, HEX);
 
         //apago generador de test
-        writeRegister(CONFIG2, 0xC0);
+        writeRegister(CONFIG2, 0x00);
         comprobar = readRegister(CONFIG2);
         Serial.print("CONFIG2 leído: ");
         Serial.println(comprobar, HEX);
 
-        writeRegister(CONFIG3, 0xE0);
+        writeRegister(CONFIG3, 0b11001001);
         comprobar = readRegister(CONFIG3);
         Serial.print("CONFIG3 leído: ");
         Serial.println(comprobar, HEX);
@@ -186,6 +189,9 @@ void ADS1298:: conversion() {
         writeRegister(ADSGPIO, 0x00);
 
         for (uint8_t ch = 0; ch < 8; ch++) {
-            writeRegister(CH1SET + ch, 0x10);
+            writeRegister(CH1SET + ch, 0x00);
         }
+
+        writeRegister(RLD_SENSN, 0x00);
+        writeRegister(RLD_SENSP, 0x00);
     }
