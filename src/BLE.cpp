@@ -10,14 +10,30 @@
 #define CHAR_EMG_CONFIG   "bbbbbbbb-1234-1234-1234-123456789abc"
 #define CHAR_IMU_DATA   "cccccccc-1234-1234-1234-123456789abc"
 #define CHAR_IMU_CONFIG   "dddddddd-1234-1234-1234-123456789abc"
+#define CHAR_EVENTOS_DATA "eeeeeeee-1234-1234-1234-123456789abc"
 
 // Cuántas muestras EMG se agrupan en cada notify BLE.
 // 10 muestras x 24 bytes = 240 bytes, dentro del MTU negociado (247 -> 244 bytes útiles).
 static constexpr uint8_t MUESTRAS_POR_PAQUETE = 10;
 static constexpr size_t BYTES_PAQUETE_EMG = MUESTRAS_POR_PAQUETE * ADS1298::BYTES_POR_MUESTRA;
 
+// Tiempo mínimo entre pulsaciones válidas de un mismo botón (antirrebote).
+static constexpr uint32_t DEBOUNCE_MS = 200;
+
+enum TipoEvento : uint8_t {
+    EVENTO_STOP  = 0,
+    EVENTO_START = 1,
+    EVENTO_MARK  = 2,
+};
+
 QueueHandle_t queueEMG;
 QueueHandle_t queueIMU;
+
+// Estado de grabación controlado por el botón START/STOP (KEY1) y contador de
+// muestras EMG tomadas desde el último START, usado para poder alinear los
+// eventos (START/STOP/MARK) con la fila correspondiente en los datos EMG.
+static volatile bool midiendo = false;
+static volatile uint32_t contadorMuestras = 0;
 
 void taskEMG(void* param);
 void taskIMU(void* param);
@@ -36,6 +52,10 @@ void bleSetup(){
     digitalWrite(LED_PIN_RGB_Blue, HIGH);
     //digitalWrite(LED_PIN_RGB_Green, LOW);
 
+    // Botones KEY1 (START/STOP) y KEY2 (MARK): activos en bajo, con pull-up interno.
+    pinMode(START_STOP, INPUT_PULLUP);
+    pinMode(MARK, INPUT_PULLUP);
+
     xTaskCreate(taskEMG, "taskEMG", 2048, NULL, 1, NULL);
     xTaskCreate(taskIMU, "taskIMU", 2048, NULL, 1, NULL);
     xTaskCreate(taskBLE, "taskBLE", 8192, NULL, 1, NULL);
@@ -46,11 +66,15 @@ void taskEMG (void* param){
     while(true){
         uint8_t muestra[ADS1298::BYTES_POR_MUESTRA];
         if (ads.readChannels(muestra)) {
-            // Envío bloqueante (con margen): si la cola está llena se espera en vez de
-            // descartar la muestra silenciosamente. Solo se pierde si el consumidor BLE
-            // lleva más de 50 ms sin drenar (p. ej. desconectado).
-            xQueueSend(queueEMG, muestra, pdMS_TO_TICKS(50));
-            muestrasEsteSegundo++;
+            // Solo se encola/cuenta mientras se está grabando (START pulsado).
+            if (midiendo) {
+                // Envío bloqueante (con margen): si la cola está llena se espera en vez de
+                // descartar la muestra silenciosamente. Solo se pierde si el consumidor BLE
+                // lleva más de 50 ms sin drenar (p. ej. desconectado).
+                xQueueSend(queueEMG, muestra, pdMS_TO_TICKS(50));
+                contadorMuestras++;
+                muestrasEsteSegundo++;
+            }
             // Sin delay aquí: el ritmo de muestreo lo marca DRDY (el propio ADC),
             // no una espera fija de software. Un delay fijo aquí desacopla la
             // captura del reloj real del ADS1298 y submuestrea/alía la señal.
@@ -81,6 +105,17 @@ void taskIMU (void* param){
         vTaskDelay(pdMS_TO_TICKS(5));
     }
 }
+// Notifica un evento (START/STOP/MARK) con el índice de muestra EMG en el
+// que ocurrió, para poder alinearlo luego con las filas capturadas en Python.
+static void enviarEvento(NimBLECharacteristic* pCharEventosData, TipoEvento tipo) {
+    uint8_t payload[5];
+    payload[0] = (uint8_t)tipo;
+    uint32_t muestra_actual = contadorMuestras;
+    memcpy(&payload[1], &muestra_actual, sizeof(muestra_actual));
+    pCharEventosData->setValue(payload, sizeof(payload));
+    pCharEventosData->notify();
+}
+
 void taskBLE (void* param){
     // MTU ampliado para poder enviar el buffer agrupado de muestras en un solo notify.
     //NimBLEDevice::setMTU(247);
@@ -94,6 +129,8 @@ void taskBLE (void* param){
     NimBLECharacteristic* pCharEMGData = pServiceEMG->createCharacteristic(CHAR_EMG_DATA, NIMBLE_PROPERTY::NOTIFY);
     //Crear Char EMG CONFIG
     NimBLECharacteristic* pCharEMGConfig = pServiceEMG->createCharacteristic(CHAR_EMG_CONFIG, NIMBLE_PROPERTY::WRITE);
+    //Crear Char EVENTOS (START/STOP/MARK)
+    NimBLECharacteristic* pCharEventosData = pServiceEMG->createCharacteristic(CHAR_EVENTOS_DATA, NIMBLE_PROPERTY::NOTIFY);
     //Crear Servicio IMU
     NimBLEService* pServiceIMU = pServer->createService(SERVICE_IMU);
     //Crear Char IMU DATA
@@ -109,6 +146,12 @@ void taskBLE (void* param){
     uint8_t bufferEMG[BYTES_PAQUETE_EMG];
     uint8_t indiceEMG = 0;
 
+    // Estado previo de los botones para detectar flancos de pulsación (HIGH -> LOW).
+    bool estadoAnteriorStartStop = HIGH;
+    bool estadoAnteriorMark = HIGH;
+    uint32_t ultimoCambioStartStop = 0;
+    uint32_t ultimoCambioMark = 0;
+
     while(true){
 
         // ====== LED AZUL: Conectado BLE ======
@@ -118,7 +161,30 @@ void taskBLE (void* param){
             digitalWrite(LED_PIN_RGB_Blue, LOW);   // Desconectado
         }
 
+        // ====== Botón START/STOP (KEY1): alterna la grabación ======
+        bool estadoStartStop = digitalRead(START_STOP);
+        if (estadoAnteriorStartStop == HIGH && estadoStartStop == LOW &&
+            (millis() - ultimoCambioStartStop) > DEBOUNCE_MS) {
+            if (!midiendo) {
+                contadorMuestras = 0;
+                midiendo = true;
+                enviarEvento(pCharEventosData, EVENTO_START);
+            } else {
+                midiendo = false;
+                enviarEvento(pCharEventosData, EVENTO_STOP);
+            }
+            ultimoCambioStartStop = millis();
+        }
+        estadoAnteriorStartStop = estadoStartStop;
 
+        // ====== Botón MARK (KEY2): marca un evento puntual ======
+        bool estadoMark = digitalRead(MARK);
+        if (estadoAnteriorMark == HIGH && estadoMark == LOW &&
+            (millis() - ultimoCambioMark) > DEBOUNCE_MS) {
+            enviarEvento(pCharEventosData, EVENTO_MARK);
+            ultimoCambioMark = millis();
+        }
+        estadoAnteriorMark = estadoMark;
 
         uint8_t muestra[ADS1298::BYTES_POR_MUESTRA];
         bool enviadoEMG = false;
