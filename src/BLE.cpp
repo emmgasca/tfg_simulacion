@@ -63,6 +63,7 @@ void bleSetup(){
 void taskEMG (void* param){
     uint32_t muestrasEsteSegundo = 0;
     uint32_t ultimoReporte = millis();
+    uint32_t ultimoYield = millis();
     while(true){
         uint8_t muestra[ADS1298::BYTES_POR_MUESTRA];
         if (ads.readChannels(muestra)) {
@@ -75,9 +76,18 @@ void taskEMG (void* param){
                 contadorMuestras++;
                 muestrasEsteSegundo++;
             }
-            // Sin delay aquí: el ritmo de muestreo lo marca DRDY (el propio ADC),
-            // no una espera fija de software. Un delay fijo aquí desacopla la
-            // captura del reloj real del ADS1298 y submuestrea/alía la señal.
+            // vTaskDelay(0) (yield) NO basta: en FreeRTOS solo cede a tareas de
+            // igual prioridad, y como esta tarea vuelve a estar lista al instante,
+            // el planificador nunca le da hueco real a IDLE0 (prioridad más baja),
+            // que nunca llega a resetear el watchdog -> abort() (visto en hardware:
+            // "Task watchdog got triggered ... taskEMG"). Hace falta un bloqueo
+            // real y periódico. Para no desacoplar la captura del reloj del ADC
+            // (eso submuestrea/alía la señal) solo se fuerza cada ~5 ms de reloj,
+            // no en cada muestra.
+            if (millis() - ultimoYield >= 5) {
+                vTaskDelay(pdMS_TO_TICKS(1));
+                ultimoYield = millis();
+            }
         } else {
             vTaskDelay(pdMS_TO_TICKS(1));
         }
@@ -169,9 +179,15 @@ void taskBLE (void* param){
                 contadorMuestras = 0;
                 midiendo = true;
                 enviarEvento(pCharEventosData, EVENTO_START);
+                if (mutexSerial != NULL) xSemaphoreTake(mutexSerial, portMAX_DELAY);
+                Serial.println("KEY1 pulsado -> START (midiendo=true)");
+                if (mutexSerial != NULL) xSemaphoreGive(mutexSerial);
             } else {
                 midiendo = false;
                 enviarEvento(pCharEventosData, EVENTO_STOP);
+                if (mutexSerial != NULL) xSemaphoreTake(mutexSerial, portMAX_DELAY);
+                Serial.printf("KEY1 pulsado -> STOP (midiendo=false, %lu muestras)\n", (unsigned long)contadorMuestras);
+                if (mutexSerial != NULL) xSemaphoreGive(mutexSerial);
             }
             ultimoCambioStartStop = millis();
         }
@@ -182,6 +198,9 @@ void taskBLE (void* param){
         if (estadoAnteriorMark == HIGH && estadoMark == LOW &&
             (millis() - ultimoCambioMark) > DEBOUNCE_MS) {
             enviarEvento(pCharEventosData, EVENTO_MARK);
+            if (mutexSerial != NULL) xSemaphoreTake(mutexSerial, portMAX_DELAY);
+            Serial.printf("KEY2 pulsado -> MARK (muestra #%lu)\n", (unsigned long)contadorMuestras);
+            if (mutexSerial != NULL) xSemaphoreGive(mutexSerial);
             ultimoCambioMark = millis();
         }
         estadoAnteriorMark = estadoMark;
