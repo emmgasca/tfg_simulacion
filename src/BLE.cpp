@@ -3,6 +3,7 @@
 #include <cstring>
 #include "hal.h"
 #include "ads1298.h"
+#include "botones.h"
 
 #define SERVICE_EMG     "12345678-1234-1234-1234-123456789abc"
 #define SERVICE_IMU     "87654321-1234-1234-1234-123456789abc"
@@ -10,6 +11,7 @@
 #define CHAR_EMG_CONFIG   "bbbbbbbb-1234-1234-1234-123456789abc"
 #define CHAR_IMU_DATA   "cccccccc-1234-1234-1234-123456789abc"
 #define CHAR_IMU_CONFIG   "dddddddd-1234-1234-1234-123456789abc"
+#define CHAR_EVENT_DATA "eeeeeeee-1234-1234-1234-123456789abc"
 
 // Cuántas muestras EMG se agrupan en cada notify BLE.
 // 10 muestras x 24 bytes = 240 bytes, dentro del MTU negociado (247 -> 244 bytes útiles).
@@ -27,14 +29,6 @@ void bleSetup(){
     // Cola con margen para absorber ráfagas sin perder muestras si el consumidor BLE se retrasa.
     queueEMG = xQueueCreate(60, ADS1298::BYTES_POR_MUESTRA);
     queueIMU = xQueueCreate(10, sizeof(float) * 3);
-
-    // Configurar pines LED
-    pinMode(LED_PIN_RGB_Red, OUTPUT);
-    pinMode(LED_PIN_RGB_Blue, OUTPUT);
-    //pinMode(LED_PIN_RGB_Green, OUTPUT);
-    digitalWrite(LED_PIN_RGB_Red, LOW);
-    digitalWrite(LED_PIN_RGB_Blue, HIGH);
-    //digitalWrite(LED_PIN_RGB_Green, LOW);
 
     xTaskCreate(taskEMG, "taskEMG", 2048, NULL, 1, NULL);
     xTaskCreate(taskIMU, "taskIMU", 2048, NULL, 1, NULL);
@@ -94,6 +88,8 @@ void taskBLE (void* param){
     NimBLECharacteristic* pCharEMGData = pServiceEMG->createCharacteristic(CHAR_EMG_DATA, NIMBLE_PROPERTY::NOTIFY);
     //Crear Char EMG CONFIG
     NimBLECharacteristic* pCharEMGConfig = pServiceEMG->createCharacteristic(CHAR_EMG_CONFIG, NIMBLE_PROPERTY::WRITE);
+    //Crear Char EVENT DATA (START/STOP/MARK)
+    NimBLECharacteristic* pCharEventData = pServiceEMG->createCharacteristic(CHAR_EVENT_DATA, NIMBLE_PROPERTY::NOTIFY);
     //Crear Servicio IMU
     NimBLEService* pServiceIMU = pServer->createService(SERVICE_IMU);
     //Crear Char IMU DATA
@@ -118,23 +114,26 @@ void taskBLE (void* param){
             digitalWrite(LED_PIN_RGB_Blue, LOW);   // Desconectado
         }
 
-
-
         uint8_t muestra[ADS1298::BYTES_POR_MUESTRA];
         bool enviadoEMG = false;
 
         // Se drena toda la cola disponible (no solo una muestra) para no acumular
         // retraso si llegaron varias muestras desde la última vuelta del bucle.
+        // Solo se empaqueta y envía si hay una sesión de grabación activa (botón START/STOP).
         while (xQueueReceive(queueEMG, muestra, 0) == pdTRUE) {
-            memcpy(&bufferEMG[indiceEMG * ADS1298::BYTES_POR_MUESTRA], muestra, ADS1298::BYTES_POR_MUESTRA);
-            indiceEMG++;
-            if (indiceEMG >= MUESTRAS_POR_PAQUETE) {
-                pCharEMGData->setValue(bufferEMG, BYTES_PAQUETE_EMG);
-                pCharEMGData->notify();
-                indiceEMG = 0;
-                enviadoEMG = true;
+            if (grabando) {
+                memcpy(&bufferEMG[indiceEMG * ADS1298::BYTES_POR_MUESTRA], muestra, ADS1298::BYTES_POR_MUESTRA);
+                indiceEMG++;
+                contadorMuestras++;
+                if (indiceEMG >= MUESTRAS_POR_PAQUETE) {
+                    pCharEMGData->setValue(bufferEMG, BYTES_PAQUETE_EMG);
+                    pCharEMGData->notify();
+                    indiceEMG = 0;
+                    enviadoEMG = true;
+                }
             }
         }
+
         float imu[3];
         bool enviadoIMU = false;
 
@@ -142,6 +141,17 @@ void taskBLE (void* param){
             pCharIMUData->setValue((uint8_t*)imu, sizeof(float) * 3);
             pCharIMUData->notify();
             enviadoIMU = true;
+        }
+
+        // ====== Eventos de botones (START/STOP/MARK) ======
+        EventoBLE evento;
+        if (xQueueReceive(queueEventos, &evento, 0) == pdTRUE) {
+            uint8_t buf[9];
+            buf[0] = evento.tipo;
+            memcpy(&buf[1], &evento.muestra, 4);
+            memcpy(&buf[5], &evento.timestamp_ms, 4);
+            pCharEventData->setValue(buf, 9);
+            pCharEventData->notify();
         }
 
         // Red = cuando hay datos siendo enviados
@@ -152,9 +162,6 @@ void taskBLE (void* param){
         }
 
         vTaskDelay(pdMS_TO_TICKS(5));
-        
-
-        
     }
 }
 void bleLoop(){}
