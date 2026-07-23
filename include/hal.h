@@ -75,4 +75,4 @@
 #else
     #error "Define una placa válida: BOARD_DEV_KIT o BOARD_RIGIDA_V1"
 #endif
-
+void setupLeds();

@@ -1,7 +1,8 @@
-#include <Arduino.h>
+GIT#include <Arduino.h>
 #include "ads1298.h"
 #include "hal.h"
 #include "BLE.h"
+#include "botones.h"
 
 // Mutex para proteger Serial entre tareas (lo usa ads1298.cpp)
 SemaphoreHandle_t mutexSerial = NULL;
@@ -14,8 +15,10 @@ void setup() {
     delay(3000);
     Serial.println("=== Arranque firmware ===");
 
-  
     mutexSerial = xSemaphoreCreateMutex();
+
+    setupLeds();
+    setupBotones();
 
     // Inicializar el ADS1298 (reset, config, arranque)
     bool arranqueCorrecto = ads.begin();
