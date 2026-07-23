@@ -1,4 +1,4 @@
-GIT#include <Arduino.h>
+#include <Arduino.h>
 #include "ads1298.h"
 #include "hal.h"
 #include "BLE.h"
