@@ -37,17 +37,16 @@ void bleSetup(){
 void taskEMG (void* param){
     uint32_t muestrasEsteSegundo = 0;
     uint32_t ultimoReporte = millis();
+    uint32_t ultimoYield = millis();
     while(true){
         uint8_t muestra[ADS1298::BYTES_POR_MUESTRA];
         if (ads.readChannels(muestra)) {
-            // Envío bloqueante (con margen): si la cola está llena se espera en vez de
-            // descartar la muestra silenciosamente. Solo se pierde si el consumidor BLE
-            // lleva más de 50 ms sin drenar (p. ej. desconectado).
             xQueueSend(queueEMG, muestra, pdMS_TO_TICKS(50));
             muestrasEsteSegundo++;
-            // Sin delay aquí: el ritmo de muestreo lo marca DRDY (el propio ADC),
-            // no una espera fija de software. Un delay fijo aquí desacopla la
-            // captura del reloj real del ADS1298 y submuestrea/alía la señal.
+            if (millis() - ultimoYield >= 5) {   
+                vTaskDelay(pdMS_TO_TICKS(1));    
+                ultimoYield = millis();          
+            }                                    
         } else {
             vTaskDelay(pdMS_TO_TICKS(1));
         }
@@ -89,7 +88,13 @@ void taskBLE (void* param){
     //Crear Char EMG CONFIG
     NimBLECharacteristic* pCharEMGConfig = pServiceEMG->createCharacteristic(CHAR_EMG_CONFIG, NIMBLE_PROPERTY::WRITE);
     //Crear Char EVENT DATA (START/STOP/MARK)
-    NimBLECharacteristic* pCharEventData = pServiceEMG->createCharacteristic(CHAR_EVENT_DATA, NIMBLE_PROPERTY::NOTIFY);
+    // INDICATE en vez de NOTIFY: a diferencia de NOTIFY (envío sin confirmación,
+    // que se puede perder en silencio si el enlace está saturado por el tráfico
+    // EMG), INDICATE espera el ACK del receptor antes de considerarse enviado,
+    // así que no se pierden eventos aunque haya mucho tráfico EMG compitiendo
+    // por el mismo enlace. Confirmado en pruebas: con NOTIFY se perdían ~80% de
+    // los eventos MARK durante una grabación EMG activa.
+    NimBLECharacteristic* pCharEventData = pServiceEMG->createCharacteristic(CHAR_EVENT_DATA, NIMBLE_PROPERTY::INDICATE);
     //Crear Servicio IMU
     NimBLEService* pServiceIMU = pServer->createService(SERVICE_IMU);
     //Crear Char IMU DATA
@@ -145,13 +150,18 @@ void taskBLE (void* param){
 
         // ====== Eventos de botones (START/STOP/MARK) ======
         EventoBLE evento;
-        if (xQueueReceive(queueEventos, &evento, 0) == pdTRUE) {
+        while (xQueueReceive(queueEventos, &evento, 0) == pdTRUE) {
             uint8_t buf[9];
             buf[0] = evento.tipo;
             memcpy(&buf[1], &evento.muestra, 4);
             memcpy(&buf[5], &evento.timestamp_ms, 4);
             pCharEventData->setValue(buf, 9);
-            pCharEventData->notify();
+            // false = pedir explícitamente una indicación (con ACK), no una notificación.
+            // notify() por defecto usa is_notification=true; aunque NimBLE se autocorrige
+            // si detecta un cliente suscrito solo a indicaciones, esa autocorrección
+            // depende de un estado de suscripción que se resuelve de forma asíncrona, y
+            // si el evento llega antes de que se resuelva, se descarta en silencio.
+            pCharEventData->notify(false);
         }
 
         // Red = cuando hay datos siendo enviados

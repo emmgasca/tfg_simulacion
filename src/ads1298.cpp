@@ -146,7 +146,7 @@ bool ADS1298 :: readChannels(uint8_t muestra[BYTES_POR_MUESTRA]) {
         // Se descartan los 3 bytes de status; se conservan los 24 bytes de canales tal cual.
         memcpy(muestra, frame + 3, BYTES_POR_MUESTRA);
 
-        static uint32_t debugCount = 0;
+       static uint32_t debugCount = 0;
         if ((debugCount++ % 200) == 0) {
             if (mutexSerial != NULL) {
                 xSemaphoreTake(mutexSerial, portMAX_DELAY);
