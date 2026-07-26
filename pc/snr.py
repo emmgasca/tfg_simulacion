@@ -15,6 +15,7 @@ import sys
 
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 
 # Debe coincidir con analizar.py y con la tasa real que configura CONFIG1 en el ADS1298.
 FRECUENCIA_MUESTREO = 2000  # Hz
@@ -77,3 +78,12 @@ if __name__ == "__main__":
     tabla_snr = pd.DataFrame(list(snr.items()), columns=["canal", "snr_db"])
     tabla_snr.to_parquet("snr.parquet")
     print("Guardado en snr.parquet")
+
+    fig = go.Figure(go.Bar(x=tabla_snr["canal"], y=tabla_snr["snr_db"]))
+    fig.update_layout(
+        title=f"SNR por canal - {ruta}",
+        xaxis_title="canal",
+        yaxis_title="SNR (dB)",
+    )
+    fig.write_html("snr.html")
+    fig.show()
