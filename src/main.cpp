@@ -3,6 +3,7 @@
 #include "hal.h"
 #include "BLE.h"
 #include "botones.h"
+#include "imu.h"
 
 // Mutex para proteger Serial entre tareas (lo usa ads1298.cpp)
 SemaphoreHandle_t mutexSerial = NULL;
@@ -26,6 +27,14 @@ void setup() {
         Serial.println("ADS1298 begin() OK");
     } else {
         Serial.println("ADS1298 begin() FALLO");
+    }
+
+    // Inicializar el IMU (I2C) - si falla, taskIMU simplemente no encontrará
+    // muestras nuevas y no se enviará nada por esa característica.
+    if (imuBegin()) {
+        Serial.println("IMU begin() OK");
+    } else {
+        Serial.println("IMU begin() FALLO");
     }
 
     // Arrancar BLE + tareas FreeRTOS

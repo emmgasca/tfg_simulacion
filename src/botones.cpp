@@ -2,9 +2,9 @@
 #include "hal.h"
 extern SemaphoreHandle_t mutexSerial;
 
-// true por defecto: los datos EMG fluyen desde el arranque sin tener que
-// pulsar ningún botón. START/STOP es un complemento opcional para pausar o
-// reanudar manualmente, no un requisito para que haya datos.
+// true por defecto: los datos EMG fluyen desde el arranque sin tener que pulsar ningún botón.
+//START/STOP es un complemento opcional para pausar o reanudar manualmente, no un requisito.
+
 volatile bool grabando = true;
 volatile uint32_t contadorMuestras = 0;
 

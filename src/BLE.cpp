@@ -4,6 +4,7 @@
 #include "hal.h"
 #include "ads1298.h"
 #include "botones.h"
+#include "imu.h"
 
 #define SERVICE_EMG     "12345678-1234-1234-1234-123456789abc"
 #define SERVICE_IMU     "87654321-1234-1234-1234-123456789abc"
@@ -67,11 +68,12 @@ void taskEMG (void* param){
 void taskIMU (void* param){
     while (true){
         float muestraIMU[3];
-        muestraIMU[0] = sin(millis() / 1000.0f);
-        muestraIMU[1] = sin(millis() / 1000.0f + 1.0f);
-        muestraIMU[2] = sin(millis() / 1000.0f + 2.0f);
-        xQueueSend(queueIMU, muestraIMU, 0);
-        vTaskDelay(pdMS_TO_TICKS(5));
+        if (imuLeerAcelerometro(muestraIMU[0], muestraIMU[1], muestraIMU[2])) {
+            xQueueSend(queueIMU, muestraIMU, 0);
+        }
+        // 20 Hz (50ms): de sobra para seguimiento de movimiento, y evita saturar
+        // el enlace BLE compitiendo con el EMG (antes eran 200 notify/s de IMU).
+        vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
 void taskBLE (void* param){
@@ -112,7 +114,7 @@ void taskBLE (void* param){
 
     while(true){
 
-        // ====== LED AZUL: Conectado BLE ======
+        // LED AZUL: Conectado BLE 
         if (pServer->getConnectedCount() > 0) {
             digitalWrite(LED_PIN_RGB_Blue, HIGH);  // Conectado
         } else {
@@ -148,7 +150,7 @@ void taskBLE (void* param){
             enviadoIMU = true;
         }
 
-        // ====== Eventos de botones (START/STOP/MARK) ======
+        // Eventos de botones (START/STOP/MARK)
         EventoBLE evento;
         while (xQueueReceive(queueEventos, &evento, 0) == pdTRUE) {
             uint8_t buf[9];
