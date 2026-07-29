@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import plotly.graph_objects as go
 
-FRECUENCIA_MUESTREO = 2000  # Hz -- debe coincidir con analizar.py y CONFIG1 del ADS1298
+FRECUENCIA_MUESTREO = 1458  # Hz -- debe coincidir con analizar.py y CONFIG1 del ADS1298
 
 RUIDO_HZ = (50, 100, 150, 200)  # red electrica y armonicos
 ANCHO_NOTCH_HZ = 2.0            # +/- Hz alrededor de cada armonico considerado "ruido"

@@ -15,9 +15,13 @@
 #define CHAR_EVENT_DATA "eeeeeeee-1234-1234-1234-123456789abc"
 
 // Cuántas muestras EMG se agrupan en cada notify BLE.
-// 10 muestras x 24 bytes = 240 bytes, dentro del MTU negociado (247 -> 244 bytes útiles).
+// 10 muestras x 24 bytes = 240 bytes + 2 bytes de cabecera (num. de secuencia) = 242,
+// dentro del MTU por defecto de la librería (255 -> 252 bytes útiles), sin
+// necesidad de pedir un MTU más alto.
 static constexpr uint8_t MUESTRAS_POR_PAQUETE = 10;
 static constexpr size_t BYTES_PAQUETE_EMG = MUESTRAS_POR_PAQUETE * ADS1298::BYTES_POR_MUESTRA;
+static constexpr size_t BYTES_CABECERA_EMG = 2;  // num. de secuencia, 16 bits, little-endian
+static constexpr size_t BYTES_NOTIFY_EMG = BYTES_CABECERA_EMG + BYTES_PAQUETE_EMG;
 
 QueueHandle_t queueEMG;
 QueueHandle_t queueIMU;
@@ -31,36 +35,55 @@ void bleSetup(){
     queueEMG = xQueueCreate(60, ADS1298::BYTES_POR_MUESTRA);
     queueIMU = xQueueCreate(10, sizeof(float) * 3);
 
-    xTaskCreate(taskEMG, "taskEMG", 2048, NULL, 1, NULL);
-    xTaskCreate(taskIMU, "taskIMU", 2048, NULL, 1, NULL);
+    xTaskCreate(taskEMG, "taskEMG", 8192, NULL, 1, NULL);
+    // xTaskCreate(taskIMU, "taskIMU", 2048, NULL, 1, NULL);
     xTaskCreate(taskBLE, "taskBLE", 8192, NULL, 1, NULL);
 }
 void taskEMG (void* param){
     uint32_t muestrasEsteSegundo = 0;
+    uint32_t colaLlenaEsteSegundo = 0;
     uint32_t ultimoReporte = millis();
-    uint32_t ultimoYield = millis();
     while(true){
         uint8_t muestra[ADS1298::BYTES_POR_MUESTRA];
         if (ads.readChannels(muestra)) {
-            xQueueSend(queueEMG, muestra, pdMS_TO_TICKS(50));
+            // contadorMuestras se incrementa aquí, justo tras leer el ADC y
+            // antes de la cola BLE, para que cuente de verdad "muestras
+            // procesadas por el firmware" (como dice guardar.py) y no solo
+            // las que sobrevivieron a la cola/BLE. Si se incrementara
+            // después de xQueueSend, un desbordamiento de queueEMG (cola
+            // llena porque BLE no drena tan rápido como el ADC produce)
+            // quedaría invisible para la comparación de pérdidas en STOP.
+            if (grabando) {
+                contadorMuestras++;
+            }
+            if (xQueueSend(queueEMG, muestra, pdMS_TO_TICKS(50)) != pdTRUE) {
+                colaLlenaEsteSegundo++;
+            }
             muestrasEsteSegundo++;
-            if (millis() - ultimoYield >= 5) {   
-                vTaskDelay(pdMS_TO_TICKS(1));    
-                ultimoYield = millis();          
-            }                                    
-        } else {
-            vTaskDelay(pdMS_TO_TICKS(1));
+            // Sin delay aquí: readChannels() ya bloquea de verdad en
+            // waitForDRDY() (semáforo dado por la ISR de DRDY), así que la
+            // tarea cede la CPU entre muestras sin necesidad de un delay
+            // artificial que descartaría conversiones del ADC.
         }
+        // else {
+        //     vTaskDelay(pdMS_TO_TICKS(1));
+        // }
 
         if (millis() - ultimoReporte >= 1000) {
-            if (mutexSerial != NULL) {
-                xSemaphoreTake(mutexSerial, portMAX_DELAY);
-            }
-            Serial.printf("Tasa real EMG: %lu muestras/s\n", (unsigned long)muestrasEsteSegundo);
-            if (mutexSerial != NULL) {
-                xSemaphoreGive(mutexSerial);
-            }
+            Serial.printf(
+                "Tasa real EMG: %lu muestras/s | exitos=%lu timeoutDRDY=%lu sincFail=%lu ceros=%lu | colaLlena=%lu\n",
+                (unsigned long)muestrasEsteSegundo,
+                (unsigned long)ads.estadisticas.exitos,
+                (unsigned long)ads.estadisticas.timeoutsDRDY,
+                (unsigned long)ads.estadisticas.fallosSincronismo,
+                (unsigned long)ads.estadisticas.descartesCeros,
+                (unsigned long)colaLlenaEsteSegundo);
+            ads.estadisticas.exitos = 0;
+            ads.estadisticas.timeoutsDRDY = 0;
+            ads.estadisticas.fallosSincronismo = 0;
+            ads.estadisticas.descartesCeros = 0;
             muestrasEsteSegundo = 0;
+            colaLlenaEsteSegundo = 0;
             ultimoReporte = millis();
         }
     }
@@ -78,7 +101,7 @@ void taskIMU (void* param){
 }
 void taskBLE (void* param){
     // MTU ampliado para poder enviar el buffer agrupado de muestras en un solo notify.
-    //NimBLEDevice::setMTU(247);
+    //NimBLEDevice::setMTU(500);
     //Iniciar NimBLE
     NimBLEDevice::init("ESP32");
     //Crear Servidor BLE
@@ -112,6 +135,12 @@ void taskBLE (void* param){
     uint8_t bufferEMG[BYTES_PAQUETE_EMG];
     uint8_t indiceEMG = 0;
 
+    // Paquete final que se envia por BLE: cabecera de secuencia + muestras.
+    // El numero de secuencia permite al PC detectar paquetes perdidos por el
+    // aire (notify no tiene ACK), sin depender de pulsar START/STOP.
+    uint8_t paqueteEMG[BYTES_NOTIFY_EMG];
+    uint16_t contadorPaquetesEMG = 0;
+
     while(true){
 
         // LED AZUL: Conectado BLE 
@@ -131,10 +160,13 @@ void taskBLE (void* param){
             if (grabando) {
                 memcpy(&bufferEMG[indiceEMG * ADS1298::BYTES_POR_MUESTRA], muestra, ADS1298::BYTES_POR_MUESTRA);
                 indiceEMG++;
-                contadorMuestras++;
                 if (indiceEMG >= MUESTRAS_POR_PAQUETE) {
-                    pCharEMGData->setValue(bufferEMG, BYTES_PAQUETE_EMG);
+                    paqueteEMG[0] = (uint8_t)(contadorPaquetesEMG & 0xFF);
+                    paqueteEMG[1] = (uint8_t)((contadorPaquetesEMG >> 8) & 0xFF);
+                    memcpy(&paqueteEMG[BYTES_CABECERA_EMG], bufferEMG, BYTES_PAQUETE_EMG);
+                    pCharEMGData->setValue(paqueteEMG, BYTES_NOTIFY_EMG);
                     pCharEMGData->notify();
+                    contadorPaquetesEMG++;
                     indiceEMG = 0;
                     enviadoEMG = true;
                 }
