@@ -4,7 +4,7 @@ import sys
 import time
 import pandas as pd
 from bleak import BleakClient, BleakScanner
-from protocolo_emg import desempaquetar_emg, leer_secuencia
+from protocolo_emg import desempaquetar_emg, leer_secuencia, PaqueteEMGInvalido
 from protocolo_eventos import desempaquetar_evento
 
 CARACTERISTICA_EMG = "AAAAAAAA-1234-1234-1234-123456789ABC"
@@ -32,31 +32,40 @@ eventos = []
 paquetes_emg_este_segundo = 0
 paquetes_imu_este_segundo = 0
 paquetes_emg_totales = 0
-paquetes_emg_perdidos = 0
-ultima_secuencia_emg = None
+paquetes_emg_perdidos = 0  # en MUESTRAS, no en paquetes: la secuencia ahora es por muestra
+paquetes_emg_corruptos = 0
+siguiente_secuencia_esperada = None
 muestras_firmware_en_stop = None
 t_inicio = None
 
 def cuando_llega_dato_emg(caracteristica, paquete):
-    global paquetes_emg_este_segundo, paquetes_emg_totales
-    global ultima_secuencia_emg, paquetes_emg_perdidos
+    global paquetes_emg_este_segundo, paquetes_emg_totales, paquetes_emg_corruptos
+    global siguiente_secuencia_esperada, paquetes_emg_perdidos
 
-    secuencia = leer_secuencia(paquete)
-    if ultima_secuencia_emg is not None:
-        esperado = (ultima_secuencia_emg + 1) & 0xFFFF
-        salto = (secuencia - esperado) & 0xFFFF
-        if salto != 0:
-            paquetes_emg_perdidos += salto
-            print(f"AVISO: hueco en secuencia EMG -- se esperaba paquete #{esperado}, "
-                  f"llego #{secuencia} (perdidos ~{salto} paquete/s)")
-    ultima_secuencia_emg = secuencia
+    try:
+        secuencia_base = leer_secuencia(paquete)
+        canales_por_muestra = desempaquetar_emg(paquete)
+    except PaqueteEMGInvalido as error:
+        # Paquete que SI llego por el aire pero esta corrupto o mal formado
+        # (CRC invalido, magic/version/tamano incorrectos) -- distinto de un
+        # paquete perdido, que ni siquiera llega.
+        paquetes_emg_corruptos += 1
+        print(f"AVISO: paquete EMG corrupto descartado -- {error}")
+        return
 
-    # Se guarda el numero de secuencia del paquete junto a cada una de sus
-    # muestras (repetido) para poder analizar despues, directamente sobre el
-    # parquet, cada cuanto y donde se pierden muestras (con un diff() sobre
-    # esta columna), sin depender de mirar la consola en directo.
-    for canales in desempaquetar_emg(paquete):
-        muestras_emg.append((secuencia,) + canales)
+    if siguiente_secuencia_esperada is not None and secuencia_base != siguiente_secuencia_esperada:
+        salto = (secuencia_base - siguiente_secuencia_esperada) & 0xFFFFFFFF
+        paquetes_emg_perdidos += salto
+        print(f"AVISO: hueco en secuencia EMG -- se esperaba muestra #{siguiente_secuencia_esperada}, "
+              f"llego #{secuencia_base} (perdidas ~{salto} muestra/s)")
+    siguiente_secuencia_esperada = (secuencia_base + len(canales_por_muestra)) & 0xFFFFFFFF
+
+    # Se guarda la secuencia real de CADA muestra (no la del paquete repetida)
+    # para poder analizar despues, directamente sobre el parquet, cada cuanto
+    # y donde se pierden muestras (con un diff() sobre esta columna), sin
+    # depender de mirar la consola en directo.
+    for i, canales in enumerate(canales_por_muestra):
+        muestras_emg.append((secuencia_base + i,) + canales)
     paquetes_emg_este_segundo += 1
     paquetes_emg_totales += 1
 
@@ -131,18 +140,19 @@ async def main():
     print(f"Guardados {len(eventos)} eventos en {nombre_salida_eventos}")
 
     print(f"\nPaquetes EMG recibidos por BLE: {paquetes_emg_totales}")
+    print(f"Paquetes EMG corruptos descartados (CRC/formato invalido): {paquetes_emg_corruptos}")
     print(f"Muestras EMG decodificadas: {len(muestras_emg)}")
 
-    # Deteccion por numero de secuencia: funciona siempre, sin depender de
-    # haber pulsado START/STOP (grabando=true desde el arranque).
+    # Deteccion por numero de secuencia (ahora por MUESTRA, no por paquete):
+    # funciona siempre, sin depender de haber pulsado START/STOP
+    # (grabando=true desde el arranque).
     if paquetes_emg_perdidos == 0:
-        print("OK: ningun paquete EMG perdido por el aire (secuencia sin huecos). "
+        print("OK: ninguna muestra EMG perdida por el aire (secuencia sin huecos). "
               "Esto NO detecta muestras descartadas en el ESP32 antes de formar el "
               "paquete (p. ej. cola llena porque BLE no drena tan rapido como el ADC); "
               "para eso, mira la comparacion con el contador del firmware tras STOP.")
     else:
-        print(f"AVISO: se detectaron ~{paquetes_emg_perdidos} paquetes EMG perdidos "
-              f"({paquetes_emg_perdidos * MUESTRAS_POR_PAQUETE_EMG} muestras aprox.) ")
+        print(f"AVISO: se detectaron ~{paquetes_emg_perdidos} muestras EMG perdidas por el aire.")
 
 
     if muestras_firmware_en_stop is not None:
