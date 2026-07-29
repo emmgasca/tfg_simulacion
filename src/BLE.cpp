@@ -21,6 +21,14 @@
 // A diferencia de nuestro formato anterior (solo numero de secuencia), este
 // añade CRC16 para poder detectar paquetes corruptos-pero-recibidos, no solo
 // paquetes perdidos por el aire.
+//
+// Probado y descartado: subir a 20 muestras/paquete (491 bytes) necesita mas
+// MTU del que se negocia por defecto (~252 bytes utiles). Con
+// NimBLEDevice::setMTU(512) explicito, la conexion BLE dejaba de funcionar;
+// sin setMTU(), el cliente tampoco negocia por su cuenta suficiente MTU y
+// los paquetes de 491 bytes llegan truncados/corruptos (todo a cero).
+// Conclusion: 10 muestras/paquete es el tamaño estable con este hardware/
+// pila BLE, sin tocar el MTU.
 static constexpr uint8_t MUESTRAS_POR_PAQUETE = 10;
 static constexpr size_t BYTES_PAQUETE_EMG = MUESTRAS_POR_PAQUETE * ADS1298::BYTES_POR_MUESTRA;
 static constexpr uint8_t LOTE_MAGIC0 = 'P';
@@ -125,8 +133,7 @@ void taskIMU (void* param){
     }
 }
 void taskBLE (void* param){
-    // MTU ampliado para poder enviar el buffer agrupado de muestras en un solo notify.
-    //NimBLEDevice::setMTU(500);
+    // NimBLEDevice::setMTU(512); -- probado y descartado: rompe la conexion BLE.
     //Iniciar NimBLE
     NimBLEDevice::init("ESP32");
     //Crear Servidor BLE
