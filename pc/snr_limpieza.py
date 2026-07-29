@@ -37,6 +37,11 @@ def limpiar_senal(muestras, fs=FRECUENCIA_MUESTREO):
 def limpiar_tabla(tabla_emg, fs=FRECUENCIA_MUESTREO):
     tabla_limpia = pd.DataFrame(index=tabla_emg.index)
     for columna in tabla_emg.columns:
+        if columna == "paquete_id":
+            # No es una señal EMG: se copia tal cual, sin filtrar, para poder
+            # seguir analizando huecos de secuencia sobre la señal limpia.
+            tabla_limpia[columna] = tabla_emg[columna]
+            continue
         muestras = tabla_emg[columna].to_numpy(dtype=float)
         tabla_limpia[columna] = limpiar_senal(muestras, fs=fs)
     return tabla_limpia
@@ -54,6 +59,8 @@ if __name__ == "__main__":
     snr_despues = calcular_snr(tabla_limpia)
 
     for canal in tabla_emg.columns:
+        if canal == "paquete_id":
+            continue
         print(f"{canal}: SNR antes = {snr_antes[canal]:.1f} dB -> "
               f"SNR despues = {snr_despues[canal]:.1f} dB")
 
@@ -70,8 +77,12 @@ if __name__ == "__main__":
         subplot_titles=("EMG original", "EMG filtrada (pasa-banda + notch)"),
     )
     for columna in tabla_emg.columns:
+        if columna == "paquete_id":
+            continue
         fig.add_trace(go.Scatter(x=tiempo, y=tabla_emg[columna], mode="lines", name=columna), row=1, col=1)
     for columna in tabla_limpia.columns:
+        if columna == "paquete_id":
+            continue
         fig.add_trace(go.Scatter(x=tiempo, y=tabla_limpia[columna], mode="lines", name=f"{columna}_limpio"), row=2, col=1)
     fig.update_xaxes(title_text="tiempo (s)", row=2, col=1)
     fig.update_layout(title=f"Limpieza EMG - {ruta}")

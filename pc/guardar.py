@@ -51,7 +51,12 @@ def cuando_llega_dato_emg(caracteristica, paquete):
                   f"llego #{secuencia} (perdidos ~{salto} paquete/s)")
     ultima_secuencia_emg = secuencia
 
-    muestras_emg.extend(desempaquetar_emg(paquete))
+    # Se guarda el numero de secuencia del paquete junto a cada una de sus
+    # muestras (repetido) para poder analizar despues, directamente sobre el
+    # parquet, cada cuanto y donde se pierden muestras (con un diff() sobre
+    # esta columna), sin depender de mirar la consola en directo.
+    for canales in desempaquetar_emg(paquete):
+        muestras_emg.append((secuencia,) + canales)
     paquetes_emg_este_segundo += 1
     paquetes_emg_totales += 1
 
@@ -112,7 +117,7 @@ async def main():
         except (KeyboardInterrupt, asyncio.CancelledError):
             print("Interrumpido por el usuario, guardando lo capturado hasta ahora...")
 
-    columnas_emg = ["ch1", "ch2","ch3","ch4","ch5","ch6","ch7","ch8"]
+    columnas_emg = ["paquete_id", "ch1", "ch2","ch3","ch4","ch5","ch6","ch7","ch8"]
     tabla_emg = pd.DataFrame(muestras_emg,columns=columnas_emg)
     tabla_emg.to_parquet(nombre_salida_emg)
     print(f"Guardadas {len(muestras_emg)} muestras EMG en {nombre_salida_emg}")
@@ -137,9 +142,8 @@ async def main():
               "para eso, mira la comparacion con el contador del firmware tras STOP.")
     else:
         print(f"AVISO: se detectaron ~{paquetes_emg_perdidos} paquetes EMG perdidos "
-              f"({paquetes_emg_perdidos * MUESTRAS_POR_PAQUETE_EMG} muestras aprox.) "
-              f"segun la secuencia de paquetes (huecos en el numero de secuencia recibido: "
-              f"el firmware SI llamo a notify() para ellos, pero no llegaron por el aire).")
+              f"({paquetes_emg_perdidos * MUESTRAS_POR_PAQUETE_EMG} muestras aprox.) ")
+
 
     if muestras_firmware_en_stop is not None:
         paquetes_esperados = muestras_firmware_en_stop // MUESTRAS_POR_PAQUETE_EMG

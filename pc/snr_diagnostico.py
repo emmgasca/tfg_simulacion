@@ -25,7 +25,10 @@ def calcular_snr(tabla_emg, fs=FRECUENCIA_MUESTREO):
         en_ruido |= np.abs(frecuencias - armonico) <= ANCHO_NOTCH_HZ
 
     resultados = {}
+    # paquete_id (si existe) es el numero de secuencia del paquete BLE, no un canal EMG.
     for columna in tabla_emg.columns:
+        if columna == "paquete_id":
+            continue
         muestras = tabla_emg[columna].to_numpy(dtype=float)
         muestras = muestras - muestras.mean()  # quitar offset DC antes de ventanear/FFT
         espectro = np.fft.rfft(muestras * ventana)
