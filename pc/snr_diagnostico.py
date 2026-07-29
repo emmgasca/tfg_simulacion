@@ -1,9 +1,11 @@
-
+# snr_diagnostico: mide el SNR de una captura EMG SIN modificar la señal.
+# Para limpiar de verdad la señal (filtro paso-banda + notch), usar snr_limpieza.py.
 
 import sys
 
 import numpy as np
 import pandas as pd
+import plotly.graph_objects as go
 
 FRECUENCIA_MUESTREO = 2000  # Hz -- debe coincidir con analizar.py y CONFIG1 del ADS1298
 
@@ -48,3 +50,21 @@ if __name__ == "__main__":
     print(f"Fs asumida: {FRECUENCIA_MUESTREO} Hz (debe coincidir con analizar.py)")
     for canal, valor in snr.items():
         print(f"{canal}: SNR = {valor:.1f} dB (senal {BANDA_SENAL_HZ} Hz vs. red {RUIDO_HZ} Hz)")
+
+    prefijo = ruta[:-len("_emg.parquet")] if ruta.endswith("_emg.parquet") else ruta.rsplit(".", 1)[0]
+    nombre_salida_parquet = f"{prefijo}_snr.parquet"
+    nombre_salida_html = f"{prefijo}_snr.html"
+
+    tabla_snr = pd.DataFrame(list(snr.items()), columns=["canal", "snr_db"])
+    tabla_snr.to_parquet(nombre_salida_parquet)
+    print(f"Guardado en {nombre_salida_parquet}")
+
+    fig = go.Figure(go.Bar(x=tabla_snr["canal"], y=tabla_snr["snr_db"]))
+    fig.update_layout(
+        title=f"SNR por canal - {ruta}",
+        xaxis_title="canal",
+        yaxis_title="SNR (dB)",
+    )
+    fig.write_html(nombre_salida_html)
+    print(f"Grafica guardada en {nombre_salida_html}")
+    fig.show()
