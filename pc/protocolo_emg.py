@@ -1,7 +1,7 @@
 """Desempaquetado del protocolo EMG enviado por BLE.
 
-Cada notify trae varias muestras agrupadas. Cada muestra son 8 canales,
-codificados como entero de 24 bits con signo, big-endian (MSB primero),
+Cada notify trae varias muestras agrupadas. 
+Cada muestra son 8 canales, codificados como entero de 24 bits con signo (MSB primero),
 tal como los entrega el ADS1298 por SPI (los 3 bytes de status del frame
 ya se descartan en el firmware antes de enviarlos).
 """
