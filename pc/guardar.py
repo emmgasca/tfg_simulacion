@@ -47,8 +47,8 @@ def cuando_llega_dato_emg(caracteristica, paquete):
         salto = (secuencia - esperado) & 0xFFFF
         if salto != 0:
             paquetes_emg_perdidos += salto
-            #print(f"AVISO: hueco en secuencia EMG -- se esperaba paquete #{esperado}, "
-                #   f"llego #{secuencia} (perdidos ~{salto} paquete/s)")
+            print(f"AVISO: hueco en secuencia EMG -- se esperaba paquete #{esperado}, "
+                  f"llego #{secuencia} (perdidos ~{salto} paquete/s)")
     ultima_secuencia_emg = secuencia
 
     muestras_emg.extend(desempaquetar_emg(paquete))
