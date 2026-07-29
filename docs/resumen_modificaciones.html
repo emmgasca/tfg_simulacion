@@ -1,0 +1,712 @@
+<title>TFG · Resumen de módulos — sistema EMG+IMU</title>
+<style>
+  :root {
+    --bg: #eef1f0;
+    --bg-raised: #ffffff;
+    --ink: #16231f;
+    --ink-soft: #45564f;
+    --ink-faint: #7c8c85;
+    --line: #d3dbd6;
+    --accent: #146b56;
+    --accent-soft: #d9ece3;
+    --accent-ink: #0d4a3c;
+    --amber: #a8631a;
+    --amber-soft: #f3e3cf;
+    --mono-bg: #142420;
+    --mono-ink: #d8ecdf;
+    --code-inline-bg: #e2ebe6;
+    --shadow: 0 1px 2px rgba(20, 35, 31, 0.06), 0 8px 24px rgba(20, 35, 31, 0.05);
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #0e1614;
+      --bg-raised: #141f1c;
+      --ink: #e7efec;
+      --ink-soft: #a9bab3;
+      --ink-faint: #71847c;
+      --line: #24352f;
+      --accent: #4fd9ac;
+      --accent-soft: #17332a;
+      --accent-ink: #86ecc9;
+      --amber: #e4a45c;
+      --amber-soft: #332615;
+      --mono-bg: #0a1310;
+      --mono-ink: #bfe6d3;
+      --code-inline-bg: #1b2b26;
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #0e1614;
+    --bg-raised: #141f1c;
+    --ink: #e7efec;
+    --ink-soft: #a9bab3;
+    --ink-faint: #71847c;
+    --line: #24352f;
+    --accent: #4fd9ac;
+    --accent-soft: #17332a;
+    --accent-ink: #86ecc9;
+    --amber: #e4a45c;
+    --amber-soft: #332615;
+    --mono-bg: #0a1310;
+    --mono-ink: #bfe6d3;
+    --code-inline-bg: #1b2b26;
+    --shadow: 0 1px 2px rgba(0, 0, 0, 0.3), 0 8px 24px rgba(0, 0, 0, 0.35);
+  }
+  :root[data-theme="light"] {
+    --bg: #eef1f0;
+    --bg-raised: #ffffff;
+    --ink: #16231f;
+    --ink-soft: #45564f;
+    --ink-faint: #7c8c85;
+    --line: #d3dbd6;
+    --accent: #146b56;
+    --accent-soft: #d9ece3;
+    --accent-ink: #0d4a3c;
+    --amber: #a8631a;
+    --amber-soft: #f3e3cf;
+    --mono-bg: #142420;
+    --mono-ink: #d8ecdf;
+    --code-inline-bg: #e2ebe6;
+    --shadow: 0 1px 2px rgba(20, 35, 31, 0.06), 0 8px 24px rgba(20, 35, 31, 0.05);
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: "Iowan Old Style", "Palatino Linotype", Palatino, Georgia, "Times New Roman", serif;
+    line-height: 1.55;
+  }
+  .sans { font-family: -apple-system, "Segoe UI", "Helvetica Neue", Arial, sans-serif; }
+  code, .mono, .filechip, .pipe-step, table { font-family: ui-monospace, "Cascadia Code", "SFMono-Regular", Consolas, "Liberation Mono", monospace; }
+
+  a { color: var(--accent-ink); }
+
+  .shell {
+    display: grid;
+    grid-template-columns: 236px minmax(0, 760px);
+    justify-content: center;
+    gap: 56px;
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 56px 24px 96px;
+  }
+
+  /* ---- masthead ---- */
+  .masthead {
+    grid-column: 1 / -1;
+    max-width: 760px;
+    margin: 0 auto 8px;
+    padding-bottom: 28px;
+    border-bottom: 3px solid var(--ink);
+  }
+  .eyebrow {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.72rem;
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--accent-ink);
+    font-weight: 600;
+    margin: 0 0 10px;
+  }
+  h1 {
+    font-size: clamp(1.9rem, 3.4vw, 2.5rem);
+    line-height: 1.14;
+    margin: 0 0 12px;
+    text-wrap: balance;
+    letter-spacing: -0.01em;
+  }
+  .dek {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    color: var(--ink-soft);
+    font-size: 1.02rem;
+    max-width: 58ch;
+    margin: 0 0 18px;
+  }
+  .meta-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 18px 28px;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.82rem;
+    color: var(--ink-faint);
+  }
+  .meta-row b { color: var(--ink-soft); font-weight: 600; }
+
+  /* ---- toc / nav ---- */
+  nav.toc {
+    align-self: start;
+    position: sticky;
+    top: 40px;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+  }
+  nav.toc .toc-label {
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-bottom: 10px;
+    display: block;
+  }
+  nav.toc ol {
+    list-style: none;
+    margin: 0 0 26px;
+    padding: 0;
+    border-left: 1px solid var(--line);
+  }
+  nav.toc li a {
+    display: block;
+    padding: 5px 0 5px 14px;
+    font-size: 0.86rem;
+    color: var(--ink-soft);
+    text-decoration: none;
+    border-left: 2px solid transparent;
+    margin-left: -1px;
+  }
+  nav.toc li a:hover { color: var(--accent-ink); border-left-color: var(--accent); }
+  nav.toc .tag {
+    display: inline-block;
+    font-size: 0.64rem;
+    padding: 1px 6px;
+    border-radius: 3px;
+    margin-right: 6px;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    vertical-align: 1px;
+  }
+  nav.toc .tag.py { background: var(--amber-soft); color: var(--amber); }
+
+  .toc-note {
+    font-size: 0.8rem;
+    color: var(--ink-faint);
+    border-top: 1px solid var(--line);
+    padding-top: 14px;
+  }
+
+  /* ---- main column ---- */
+  main { min-width: 0; }
+
+  .intro {
+    font-size: 1.02rem;
+    color: var(--ink-soft);
+    max-width: 66ch;
+    margin: 4px 0 34px;
+  }
+
+  /* ---- pipeline diagram ---- */
+  .pipeline {
+    margin: 0 0 40px;
+    padding: 20px 20px 22px;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 10px;
+    box-shadow: var(--shadow);
+  }
+  .pipeline h2 {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.72rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 0 0 14px;
+    font-weight: 600;
+  }
+  .pipe-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 0;
+    margin-bottom: 6px;
+  }
+  .pipe-step {
+    font-size: 0.76rem;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    padding: 6px 10px;
+    border-radius: 6px;
+    white-space: nowrap;
+  }
+  .pipe-step.file { background: var(--code-inline-bg); color: var(--ink); }
+  .pipe-arrow { color: var(--ink-faint); padding: 0 8px; font-size: 0.9rem; }
+  .pipe-caption {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.8rem;
+    color: var(--ink-faint);
+    margin: 4px 0 0;
+  }
+
+  /* ---- file sections ---- */
+  section.filecard {
+    scroll-margin-top: 32px;
+    margin-bottom: 30px;
+    background: var(--bg-raised);
+    border: 1px solid var(--line);
+    border-radius: 12px;
+    box-shadow: var(--shadow);
+    overflow: hidden;
+  }
+  .filecard-head {
+    display: flex;
+    align-items: baseline;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 20px 26px 16px;
+    border-bottom: 1px solid var(--line);
+  }
+  .filechip {
+    font-size: 0.98rem;
+    font-weight: 600;
+    color: var(--ink);
+    background: var(--code-inline-bg);
+    padding: 3px 9px;
+    border-radius: 5px;
+  }
+  .role {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.86rem;
+    color: var(--ink-soft);
+  }
+  .lang-pill {
+    margin-left: auto;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 3px 9px;
+    border-radius: 20px;
+    background: var(--accent-soft);
+    color: var(--accent-ink);
+    font-weight: 600;
+  }
+  .lang-pill.py { background: var(--amber-soft); color: var(--amber); }
+
+  .filecard-body { padding: 18px 26px 24px; }
+  .filecard-body h3 {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.72rem;
+    letter-spacing: 0.09em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin: 18px 0 8px;
+    font-weight: 600;
+  }
+  .filecard-body h3:first-child { margin-top: 0; }
+  .filecard-body p { margin: 0 0 10px; color: var(--ink); }
+  .filecard-body ul { margin: 0 0 10px; padding-left: 1.2em; }
+  .filecard-body li { margin-bottom: 6px; }
+  .filecard-body code {
+    background: var(--code-inline-bg);
+    padding: 1px 5px;
+    border-radius: 4px;
+    font-size: 0.87em;
+  }
+
+  .callout {
+    margin-top: 14px;
+    padding: 12px 16px;
+    border-left: 3px solid var(--amber);
+    background: var(--amber-soft);
+    border-radius: 0 6px 6px 0;
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.85rem;
+    color: var(--ink);
+  }
+  .callout b { color: var(--amber); }
+
+  pre.snippet {
+    margin: 10px 0 0;
+    background: var(--mono-bg);
+    color: var(--mono-ink);
+    padding: 14px 16px;
+    border-radius: 8px;
+    font-size: 0.8rem;
+    overflow-x: auto;
+    line-height: 1.5;
+  }
+
+  table.result {
+    width: 100%;
+    border-collapse: collapse;
+    margin-top: 10px;
+    font-size: 0.82rem;
+  }
+  table.result th, table.result td {
+    text-align: right;
+    padding: 6px 10px;
+    border-bottom: 1px solid var(--line);
+    font-variant-numeric: tabular-nums;
+  }
+  table.result th:first-child, table.result td:first-child { text-align: left; }
+  table.result thead th {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.68rem;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    font-weight: 600;
+    border-bottom: 1px solid var(--ink-faint);
+  }
+  table.result td.delta { color: var(--accent-ink); font-weight: 600; }
+
+  footer.page-end {
+    max-width: 760px;
+    grid-column: 2;
+    margin-top: 8px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.82rem;
+    color: var(--ink-faint);
+  }
+
+  @media (max-width: 880px) {
+    .shell { grid-template-columns: minmax(0, 1fr); }
+    nav.toc { position: static; margin-bottom: 8px; }
+    nav.toc ol { columns: 2; }
+    footer.page-end { grid-column: 1; }
+  }
+
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---- print button (screen only) ---- */
+  .print-bar {
+    position: fixed;
+    top: 18px;
+    right: 22px;
+    z-index: 10;
+  }
+  .print-btn {
+    font-family: -apple-system, "Segoe UI", sans-serif;
+    font-size: 0.82rem;
+    font-weight: 600;
+    color: var(--bg);
+    background: var(--ink);
+    border: none;
+    padding: 9px 16px;
+    border-radius: 7px;
+    cursor: pointer;
+    box-shadow: var(--shadow);
+  }
+  .print-btn:hover { background: var(--accent-ink); }
+
+  /* ---- print stylesheet ---- */
+  @media print {
+    .print-bar { display: none; }
+
+    :root {
+      --bg: #ffffff;
+      --bg-raised: #ffffff;
+      --ink: #101a17;
+      --ink-soft: #33443d;
+      --ink-faint: #5a6b64;
+      --line: #c7cfca;
+      --accent: #146b56;
+      --accent-soft: #e7f2ec;
+      --accent-ink: #0d4a3c;
+      --amber: #8a5215;
+      --amber-soft: #f6ead8;
+      --code-inline-bg: #eef2ef;
+      --shadow: none;
+    }
+
+    @page {
+      size: A4;
+      margin: 16mm 14mm;
+    }
+
+    body { background: #fff; font-size: 10.6pt; }
+
+    .shell {
+      display: block;
+      max-width: none;
+      padding: 0;
+      margin: 0;
+    }
+
+    .masthead { max-width: none; margin-bottom: 14px; padding-bottom: 14px; }
+    h1 { font-size: 19pt; }
+    .dek { font-size: 10.2pt; max-width: none; }
+
+    /* sidebar becomes a simple inline index, no sticky positioning */
+    nav.toc {
+      position: static;
+      break-after: page;
+      columns: 2;
+      column-gap: 32px;
+    }
+    nav.toc ol { border-left: none; margin: 0; }
+    nav.toc li a { padding: 3px 0; color: var(--ink); text-decoration: none; }
+    nav.toc li a::after { content: leader(".") target-counter(attr(href), page); }
+    .toc-note { display: none; }
+
+    main { max-width: none; }
+
+    .pipeline, section.filecard {
+      box-shadow: none;
+      border: 1px solid var(--line);
+      break-inside: avoid;
+    }
+    section.filecard { margin-bottom: 16px; }
+    .filecard-head { padding: 12px 16px 10px; }
+    .filecard-body { padding: 10px 16px 14px; }
+    .filecard-body h3 { margin: 12px 0 6px; }
+
+    pre.snippet { white-space: pre-wrap; word-break: break-word; }
+
+    a { color: var(--ink); text-decoration: underline; }
+
+    footer.page-end { grid-column: auto; margin-top: 20px; }
+  }
+</style>
+
+<div class="print-bar">
+  <button class="print-btn" onclick="window.print()" type="button">Imprimir / Guardar PDF</button>
+</div>
+
+<div class="masthead">
+  <p class="eyebrow sans">TFG — sistema de adquisición EMG + IMU · nota técnica para tutoría</p>
+  <h1>Últimas modificaciones del firmware y del software de captura</h1>
+  <p class="dek">Resumen módulo a módulo de los nueve archivos tocados en esta iteración: gestión de botones físicos, driver del IMU por I2C, dos scripts de análisis de ruido (diagnóstico y limpieza), el protocolo de eventos BLE y la cadena de captura/guardado/visualización en el PC.</p>
+  <div class="meta-row">
+    <span><b>Placa</b> ESP32-S3 + ADS1298 (EMG, SPI) + ISM330DLC (IMU, I2C)</span>
+    <span><b>Enlace</b> BLE (NimBLE)</span>
+    <span><b>Fecha</b> 29 de julio de 2026</span>
+  </div>
+</div>
+
+<div class="shell">
+  <nav class="toc">
+    <span class="toc-label">En este documento</span>
+    <ol>
+      <li><a href="#flujo"><span class="tag">·</span>Cómo encajan las piezas</a></li>
+      <li><a href="#botones"><span class="tag">C++</span>botones.cpp</a></li>
+      <li><a href="#imu"><span class="tag">C++</span>imu.cpp / imu.h</a></li>
+      <li><a href="#protocolo"><span class="tag py">py</span>protocolo_eventos.py</a></li>
+      <li><a href="#pruebabotones"><span class="tag py">py</span>prueba_botones.py</a></li>
+      <li><a href="#guardar"><span class="tag py">py</span>guardar.py</a></li>
+      <li><a href="#analizar"><span class="tag py">py</span>analizar.py</a></li>
+      <li><a href="#diagnostico"><span class="tag py">py</span>snr_diagnostico.py</a></li>
+      <li><a href="#limpieza"><span class="tag py">py</span>snr_limpieza.py</a></li>
+    </ol>
+    <p class="toc-note">Los cuatro primeros forman la cadena de <b style="color:var(--ink-soft)">captura</b>; los dos últimos, la de <b style="color:var(--ink-soft)">análisis</b> posterior en PC.</p>
+  </nav>
+
+  <main>
+    <p class="intro">Todo lo de aquí se apoya en dos periféricos ya existentes en la placa — el ADC EMG (ADS1298, 8 canales, SPI) y el IMU (ISM330DLC, I2C) — y añade tres capacidades nuevas: <b>eventos manuales</b> (botones START/STOP y MARK), <b>guardado sincronizado</b> de EMG+IMU+eventos en disco, y <b>evaluación/limpieza de ruido</b> sobre lo capturado.</p>
+
+    <section class="pipeline" id="flujo">
+      <h2>Cómo encajan las piezas</h2>
+
+      <div class="pipe-row">
+        <span class="pipe-step file">botones.cpp</span><span class="pipe-arrow">→</span>
+        <span class="pipe-step">evento BLE (START/STOP/MARK)</span><span class="pipe-arrow">→</span>
+        <span class="pipe-step file">protocolo_eventos.py</span><span class="pipe-arrow">→</span>
+        <span class="pipe-step file">guardar.py</span><span class="pipe-arrow">→</span>
+        <span class="pipe-step">*_eventos.parquet</span>
+      </div>
+      <p class="pipe-caption">Un botón físico en la placa genera un evento con marca de tiempo y de muestra; el PC lo decodifica y lo guarda junto a la señal.</p>
+
+      <div class="pipe-row" style="margin-top:14px;">
+        <span class="pipe-step file">imu.cpp</span><span class="pipe-arrow">→</span>
+        <span class="pipe-step">BLE (x, y, z)</span><span class="pipe-arrow">→</span>
+        <span class="pipe-step file">guardar.py</span><span class="pipe-arrow">→</span>
+        <span class="pipe-step">*_imu.parquet</span><span class="pipe-arrow">→</span>
+        <span class="pipe-step file">analizar.py</span>
+      </div>
+      <p class="pipe-caption">La aceleración se lee por I2C y se transmite por el mismo enlace BLE que el EMG.</p>
+
+      <div class="pipe-row" style="margin-top:14px;">
+        <span class="pipe-step">*_emg.parquet</span><span class="pipe-arrow">→</span>
+        <span class="pipe-step file">snr_diagnostico.py</span><span class="pipe-arrow">→</span>
+        <span class="pipe-step">SNR (dB), sin tocar la señal</span>
+      </div>
+      <div class="pipe-row" style="margin-top:6px;">
+        <span class="pipe-step">*_emg.parquet</span><span class="pipe-arrow">→</span>
+        <span class="pipe-step file">snr_limpieza.py</span><span class="pipe-arrow">→</span>
+        <span class="pipe-step">*_limpio.parquet</span>
+      </div>
+      <p class="pipe-caption">El primero <i>mide</i> el ruido; el segundo lo <i>elimina</i> de verdad de la señal guardada.</p>
+    </section>
+
+    <!-- ============ BOTONES.CPP ============ -->
+    <section class="filecard" id="botones">
+      <div class="filecard-head">
+        <span class="filechip">botones.cpp</span>
+        <span class="role">gestión de los botones físicos START/STOP y MARK</span>
+        <span class="lang-pill">firmware · C++</span>
+      </div>
+      <div class="filecard-body">
+        <h3>Qué resuelve</h3>
+        <p>Permite marcar momentos concretos durante una grabación (por ejemplo, el inicio de una contracción) sin depender del PC. La grabación EMG <b>no depende de estos botones</b>: fluye desde el arranque de la placa; los botones son un complemento opcional para pausar/reanudar y anotar instantes.</p>
+
+        <h3>Cómo funciona</h3>
+        <ul>
+          <li>Una tarea de FreeRTOS dedicada (<code>taskButtons</code>) sondea los dos pines cada 5&nbsp;ms, con las entradas configuradas en <code>INPUT_PULLUP</code> (el botón conecta a tierra al pulsarlo).</li>
+          <li><b>Antirrebote (debounce):</b> un botón mecánico "rebota" varias veces en milisegundos al pulsarse; el código exige que pasen 200&nbsp;ms desde el último flanco válido antes de aceptar uno nuevo, para no contar una sola pulsación como varias.</li>
+          <li><b>START/STOP</b> alterna la variable <code>grabando</code> y, al iniciar, reinicia el contador de muestras a cero.</li>
+          <li><b>MARK</b> solo se acepta si <code>grabando == true</code>; si se pulsa con la grabación parada, se ignora y se avisa por el puerto serie.</li>
+          <li>Cada pulsación válida se empaqueta como <code>EventoBLE</code> (tipo, número de muestra EMG en ese instante, timestamp en ms) y se deposita en una cola FreeRTOS (<code>queueEventos</code>) para que otra tarea la envíe por BLE — así la lectura de botones nunca se bloquea esperando al envío inalámbrico.</li>
+        </ul>
+
+        <div class="callout"><b>Punto a explicar al tutor:</b> el contador de muestras que viaja en el evento permite alinear después, en el PC, el instante exacto de la pulsación con la muestra EMG correspondiente — es la referencia temporal común entre firmware y análisis posterior.</div>
+      </div>
+    </section>
+
+    <!-- ============ IMU ============ -->
+    <section class="filecard" id="imu">
+      <div class="filecard-head">
+        <span class="filechip">imu.cpp&nbsp;/&nbsp;imu.h</span>
+        <span class="role">driver del acelerómetro ISM330DLC por I2C</span>
+        <span class="lang-pill">firmware · C++</span>
+      </div>
+      <div class="filecard-body">
+        <h3>Qué resuelve</h3>
+        <p>Da acceso a la lectura de aceleración (ejes x, y, z) del IMU, en un bus I2C independiente del SPI que ya usa el ADS1298 para el EMG — confirmado contra el datasheet del ISM330DLC: el sensor se cablea en <b>Modo 1</b> (I²C punto a punto, sin sensor hub ni host auxiliar).</p>
+
+        <h3>Cómo funciona</h3>
+        <ul>
+          <li><code>imuBegin()</code> abre el bus a 400&nbsp;kHz (I2C <i>fast mode</i>, soportado por el chip) y hace una comprobación de arranque: lee el registro <code>WHO_AM_I</code> (0x0F) y lo compara con el valor esperado (0x6A). Si no coincide, el fallo se detecta inmediatamente en el arranque en vez de dar lecturas silenciosamente erróneas más tarde.</li>
+          <li>Configura el acelerómetro a 104&nbsp;Hz de frecuencia de salida y ±2g de fondo de escala escribiendo el registro <code>CTRL1_XL</code>.</li>
+          <li><code>imuLeerAcelerometro()</code> lee en una sola ráfaga los 6 bytes de X, Y, Z (2 bytes cada eje), aprovechando que el chip autoincrementa la dirección de registro internamente — evita seis transacciones I2C sueltas.</li>
+          <li>Los valores crudos de 16&nbsp;bits se convierten a <i>g</i> multiplicando por la sensibilidad del datasheet para el rango ±2g (0.061&nbsp;mg/LSB).</li>
+        </ul>
+
+        <h3>Interfaz que expone (imu.h)</h3>
+        <p>Solo dos funciones públicas — <code>imuBegin()</code> y <code>imuLeerAcelerometro(x, y, z)</code> — el resto del firmware no necesita saber nada de direcciones I2C ni de registros del chip.</p>
+      </div>
+    </section>
+
+    <!-- ============ PROTOCOLO EVENTOS ============ -->
+    <section class="filecard" id="protocolo">
+      <div class="filecard-head">
+        <span class="filechip">protocolo_eventos.py</span>
+        <span class="role">traductor del paquete BLE de eventos al lado del PC</span>
+        <span class="lang-pill py">Python</span>
+      </div>
+      <div class="filecard-body">
+        <h3>Qué resuelve</h3>
+        <p>Los eventos llegan del ESP32 como bytes binarios; este módulo los convierte en un diccionario legible en Python.</p>
+        <h3>Cómo funciona</h3>
+        <p><code>struct.unpack('&lt;BII', paquete)</code> interpreta el paquete como: 1 byte (tipo de evento) + 2 enteros de 4 bytes (número de muestra y timestamp en ms), en formato <i>little-endian</i> (<code>&lt;</code>). Este formato tiene que coincidir exactamente, byte a byte, con la struct <code>EventoBLE</code> definida en <code>botones.h</code> del firmware — son las dos mitades del mismo contrato binario.</p>
+      </div>
+    </section>
+
+    <!-- ============ PRUEBA BOTONES ============ -->
+    <section class="filecard" id="pruebabotones">
+      <div class="filecard-head">
+        <span class="filechip">prueba_botones.py</span>
+        <span class="role">script de verificación rápida por BLE (sin guardar nada)</span>
+        <span class="lang-pill py">Python</span>
+      </div>
+      <div class="filecard-body">
+        <h3>Qué resuelve</h3>
+        <p>Comprobar en vivo, antes de una captura real, que los botones físicos generan eventos correctamente y que el enlace BLE funciona — sin la complejidad de guardar archivos.</p>
+        <h3>Cómo funciona</h3>
+        <ul>
+          <li>Se conecta a la placa por su dirección BLE fija y se suscribe a dos características: EMG y eventos.</li>
+          <li>Para EMG, solo cuenta cuántos paquetes llegan por segundo (para comprobar que el flujo de datos no se corta).</li>
+          <li>Para eventos, imprime en consola el nombre legible (START / STOP / MARK), la muestra en la que ocurrió y el instante, con mensajes visibles para guiar la prueba manual ("ya puedes pulsar MARK", "sesión cerrada").</li>
+          <li>Escucha durante 60&nbsp;segundos fijos, pensado para una prueba de banco, no para una captura de datos real.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ============ GUARDAR ============ -->
+    <section class="filecard" id="guardar">
+      <div class="filecard-head">
+        <span class="filechip">guardar.py</span>
+        <span class="role">captura real: EMG + IMU + eventos, sincronizados, a disco</span>
+        <span class="lang-pill py">Python</span>
+      </div>
+      <div class="filecard-body">
+        <h3>Qué resuelve</h3>
+        <p>Es el script de grabación definitivo: conecta con la placa y guarda en disco, de forma sincronizada, las tres fuentes de datos (EMG, IMU y eventos) de una sesión completa.</p>
+        <h3>Cómo funciona</h3>
+        <ul>
+          <li>Admite <code>nombre</code> y <code>duracion_s</code> como argumentos de consola (<code>python guardar.py sesion1 120</code>); sin argumentos usa <code>captura</code> y 60&nbsp;s por compatibilidad con capturas anteriores.</li>
+          <li>Se suscribe a las tres características BLE a la vez (EMG, IMU, eventos) y cada una tiene su propio callback que va acumulando muestras en listas de Python.</li>
+          <li>Para IMU y eventos, el tiempo se calcula como <code>time.perf_counter() - t_inicio</code>: un reloj de referencia común para toda la sesión, de modo que EMG, IMU y eventos queden en la misma línea temporal.</li>
+          <li>Cada segundo imprime el ritmo de llegada de paquetes EMG e IMU — útil para detectar en vivo si el enlace BLE se está perdiendo datos.</li>
+          <li>Puede interrumpirse con <code>Ctrl+C</code> sin perder lo ya capturado: guarda igualmente los tres archivos con lo acumulado hasta ese momento.</li>
+          <li>Al terminar, escribe <code>&lt;nombre&gt;_emg.parquet</code>, <code>&lt;nombre&gt;_imu.parquet</code> y <code>&lt;nombre&gt;_eventos.parquet</code> — cada evento guarda también el índice de muestra EMG en que ocurrió, para poder ubicarlo exactamente sobre la señal después.</li>
+        </ul>
+      </div>
+    </section>
+
+    <!-- ============ ANALIZAR ============ -->
+    <section class="filecard" id="analizar">
+      <div class="filecard-head">
+        <span class="filechip">analizar.py</span>
+        <span class="role">inspección visual rápida de una captura</span>
+        <span class="lang-pill py">Python</span>
+      </div>
+      <div class="filecard-body">
+        <h3>Qué resuelve</h3>
+        <p>Ver de un vistazo la señal capturada, sin necesidad de abrir los <code>.parquet</code> a mano.</p>
+        <h3>Cómo funciona</h3>
+        <p>Carga <code>captura_emg.parquet</code> y, si existe, también <code>captura_imu.parquet</code>. Si hay IMU, dibuja dos gráficas apiladas (EMG arriba, IMU x/y/z abajo) compartiendo el eje de tiempo, para poder comparar directamente un movimiento del IMU con la actividad muscular del EMG en el mismo instante. Si no hay IMU, dibuja solo los 8 canales EMG. El resultado se guarda como HTML interactivo y se abre automáticamente en el navegador.</p>
+      </div>
+    </section>
+
+    <!-- ============ SNR DIAGNOSTICO ============ -->
+    <section class="filecard" id="diagnostico">
+      <div class="filecard-head">
+        <span class="filechip">snr_diagnostico.py</span>
+        <span class="role">mide cuánto ruido de red hay en una captura, sin modificarla</span>
+        <span class="lang-pill py">Python</span>
+      </div>
+      <div class="filecard-body">
+        <h3>Qué resuelve</h3>
+        <p>Da un número objetivo (SNR en decibelios) de la calidad de una grabación, comparando la señal EMG fisiológica frente a la contaminación por la red eléctrica.</p>
+        <h3>Cómo funciona</h3>
+        <ul>
+          <li>Para cada canal, pasa la señal al dominio de la frecuencia con una FFT, tras aplicar una ventana de Hanning (evita que el corte artificial de la grabación "manche" el espectro con frecuencias falsas).</li>
+          <li>Define la banda fisiológica de interés (20–450&nbsp;Hz) y, dentro de ella, marca como "ruido" las franjas estrechas alrededor de 50, 100, 150 y 200&nbsp;Hz (la red eléctrica y sus armónicos).</li>
+          <li>Suma la energía en la parte de "ruido" y en el resto de la banda ("señal"), y calcula <code>SNR = 10·log10(potencia_señal / potencia_ruido)</code>.</li>
+        </ul>
+        <div class="callout"><b>Importante:</b> es un <i>diagnóstico</i>, no una limpieza — la señal que se sigue usando después (en <code>analizar.py</code>, por ejemplo) conserva el ruido intacto. Es el equivalente a poner un termómetro, no a bajar la fiebre.</div>
+      </div>
+    </section>
+
+    <!-- ============ SNR LIMPIEZA ============ -->
+    <section class="filecard" id="limpieza">
+      <div class="filecard-head">
+        <span class="filechip">snr_limpieza.py</span>
+        <span class="role">filtra de verdad la señal y guarda la versión limpia</span>
+        <span class="lang-pill py">Python</span>
+      </div>
+      <div class="filecard-body">
+        <h3>Qué resuelve</h3>
+        <p>Complementa al anterior: en vez de solo medir el ruido, lo <b>elimina</b> de la señal guardada, siguiendo el mismo enfoque que usan sistemas de EMG de referencia en la literatura (filtro paso-banda + notch de red antes de cualquier análisis posterior).</p>
+        <h3>Cómo funciona</h3>
+        <ul>
+          <li><b>Filtro paso-banda Butterworth de 4º orden</b> (20–450&nbsp;Hz): dentro de esa banda deja pasar la señal casi sin distorsionar su amplitud; fuera, la atenúa progresivamente. El orden 4 hace que esa transición sea razonablemente brusca sin ser inestable.</li>
+          <li><b>Filtro notch</b> en 50, 100, 150 y 200&nbsp;Hz (<code>scipy.signal.iirnotch</code>): elimina selectivamente esas frecuencias estrechas de red, dejando intacto todo lo demás.</li>
+          <li>Ambos se aplican con <code>filtfilt</code> (filtrado de fase cero): el filtro se pasa una vez hacia adelante y otra hacia atrás, de modo que se cancela cualquier desplazamiento temporal — importante en EMG, donde el instante exacto de un pico importa para relacionarlo con un evento MARK.</li>
+          <li>Para verificar que el filtrado funciona, calcula el SNR (reutilizando <code>snr_diagnostico.py</code>) antes y después de filtrar, y los muestra lado a lado.</li>
+          <li>Guarda la señal limpia en <code>&lt;nombre&gt;_limpio.parquet</code> y una gráfica comparativa (original vs. filtrada) en HTML.</li>
+        </ul>
+
+        <h3>Resultado con la captura real del proyecto</h3>
+        <table class="result">
+          <thead><tr><th>canal</th><th>SNR antes</th><th>SNR después</th><th>mejora</th></tr></thead>
+          <tbody>
+            <tr><td>ch1</td><td>14.9 dB</td><td>21.0 dB</td><td class="delta">+6.1 dB</td></tr>
+            <tr><td>ch2</td><td>14.8 dB</td><td>20.8 dB</td><td class="delta">+6.0 dB</td></tr>
+            <tr><td>ch3</td><td>14.8 dB</td><td>20.8 dB</td><td class="delta">+6.0 dB</td></tr>
+            <tr><td>ch4</td><td>14.8 dB</td><td>20.9 dB</td><td class="delta">+6.1 dB</td></tr>
+            <tr><td>ch5–ch8</td><td>≈14.8 dB</td><td>≈21.0 dB</td><td class="delta">+6.1 dB</td></tr>
+          </tbody>
+        </table>
+
+        <div class="callout"><b>Punto a explicar al tutor:</b> <code>snr_diagnostico.py</code> y <code>snr_limpieza.py</code> no son alternativas entre las que elegir, sino un par: uno mide, el otro actúa. El flujo recomendado es capturar con <code>guardar.py</code>, medir el ruido con <code>snr_diagnostico.py</code> y, si es alto, limpiar con <code>snr_limpieza.py</code> antes de cualquier análisis posterior (descomposición, detección de activaciones, etc.).</div>
+      </div>
+    </section>
+
+  </main>
+
+  <footer class="page-end">Documento generado como apoyo para la reunión de seguimiento del TFG · sistema de adquisición EMG+IMU sobre ESP32-S3.</footer>
+</div>

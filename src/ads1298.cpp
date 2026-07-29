@@ -4,6 +4,17 @@
 #include "ads1298.h"
 #include "hal.h"
 
+// Trampolín de la ISR de DRDY. Tiene que ser una función con linkage propio
+// marcada IRAM_ATTR (no una lambda sin marcar): si el código de la ISR no
+// vive en IRAM y la interrupción salta justo cuando la caché de flash está
+// desactivada (p. ej. por una escritura a flash del stack BLE), el ESP32
+// crashea con un "Guru Meditation Error" y se reinicia. Con DRDY disparando
+// a 2 kHz, la probabilidad de coincidir con una de esas ventanas no es
+// despreciable.
+static void IRAM_ATTR ads1298_drdy_isr() {
+    ads.onDrdyInterrupt();
+}
+
 bool ADS1298::begin() {
     pinMode(_cs, OUTPUT);
         pinMode(_reset, OUTPUT);
@@ -27,8 +38,21 @@ bool ADS1298::begin() {
         delay(2);
         stopReadDataContinuous();
         conversion();
+
+        // Semáforo dado por la ISR de DRDY (flanco de bajada). waitForDRDY()
+        // bloquea sobre él en vez de hacer polling activo: la tarea cede la
+        // CPU de verdad entre muestras (permite que IDLE corra y alimente el
+        // watchdog) sin necesidad de un delay artificial que descartaría
+        // conversiones del ADC, que no tiene FIFO propio.
+        _drdySemaphore = xSemaphoreCreateBinary();
+        attachInterrupt(digitalPinToInterrupt(_drdy), ads1298_drdy_isr, FALLING);
+
         startConversion();
         delay(5);
+
+        // Descarta cualquier flanco espurio capturado antes de que el ADC
+        // empezara a convertir de verdad.
+        xSemaphoreTake(_drdySemaphore, 0);
         return true;
 }
 
@@ -96,16 +120,19 @@ uint8_t ADS1298::readRegister(uint8_t reg) {
         return respuesta;
     }
 bool ADS1298:: waitForDRDY (uint32_t timeoutMs) {
-        uint32_t start = millis();
-        while (digitalRead(_drdy) == HIGH) {
-            if (millis() - start > timeoutMs) {
-                return false;
-            }
-            delayMicroseconds(100);
-        }
-        return true;
+        return xSemaphoreTake(_drdySemaphore, pdMS_TO_TICKS(timeoutMs)) == pdTRUE;
     }
+
+void IRAM_ATTR ADS1298::onDrdyInterrupt() {
+    BaseType_t higherPriorityTaskWoken = pdFALSE;
+    xSemaphoreGiveFromISR(_drdySemaphore, &higherPriorityTaskWoken);
+    portYIELD_FROM_ISR(higherPriorityTaskWoken);
+}
 bool ADS1298 :: readChannels(uint8_t muestra[BYTES_POR_MUESTRA]) {
+        // Bloquea aquí hasta que la ISR de DRDY dé el semáforo (o timeout).
+        // Sin esta espera, este bucle no está sincronizado con el ADC en
+        // absoluto: se dispara a la velocidad máxima del bus SPI, ajena a
+        // que haya o no una conversión nueva lista.
         if (!waitForDRDY()) {
             return false;
         }
@@ -146,7 +173,7 @@ bool ADS1298 :: readChannels(uint8_t muestra[BYTES_POR_MUESTRA]) {
         // Se descartan los 3 bytes de status; se conservan los 24 bytes de canales tal cual.
         memcpy(muestra, frame + 3, BYTES_POR_MUESTRA);
 
-        static uint32_t debugCount = 0;
+       static uint32_t debugCount = 0;
         if ((debugCount++ % 200) == 0) {
             if (mutexSerial != NULL) {
                 xSemaphoreTake(mutexSerial, portMAX_DELAY);

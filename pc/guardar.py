@@ -47,8 +47,8 @@ def cuando_llega_dato_emg(caracteristica, paquete):
         salto = (secuencia - esperado) & 0xFFFF
         if salto != 0:
             paquetes_emg_perdidos += salto
-            #print(f"AVISO: hueco en secuencia EMG -- se esperaba paquete #{esperado}, "
-                #   f"llego #{secuencia} (perdidos ~{salto} paquete/s)")
+            print(f"AVISO: hueco en secuencia EMG -- se esperaba paquete #{esperado}, "
+                  f"llego #{secuencia} (perdidos ~{salto} paquete/s)")
     ultima_secuencia_emg = secuencia
 
     muestras_emg.extend(desempaquetar_emg(paquete))
@@ -105,7 +105,7 @@ async def main():
         t_inicio = time.perf_counter()
         await client.start_notify(CARACTERISTICA_EMG, cuando_llega_dato_emg)
         await client.start_notify(CARACTERISTICA_IMU, cuando_llega_dato_imu)
-        await client.starpyt_notify(CARACTERISTICA_EVENTOS, cuando_llega_evento)
+        await client.start_notify(CARACTERISTICA_EVENTOS, cuando_llega_evento)
         print(f"Escuchando {duracion_s}s (los datos EMG/IMU llegan automáticamente; START/STOP/MARK en la placa quedan registrados).")
         try:
             await reportar_progreso(duracion_s)

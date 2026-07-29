@@ -57,6 +57,9 @@ private:
     uint8_t _start;
     uint8_t _drdy;
     SPISettings _spiConfig{1000000, MSBFIRST, SPI_MODE1};
+    // Señalizado por la ISR de DRDY (flanco de bajada); waitForDRDY() bloquea
+    // sobre él en vez de hacer polling activo.
+    SemaphoreHandle_t _drdySemaphore = nullptr;
 
     static int32_t combine24bit(uint8_t b0, uint8_t b1, uint8_t b2) {
         int32_t value = ((int32_t)b0 << 16) | ((int32_t)b1 << 8) | b2;
@@ -72,6 +75,18 @@ public:
     static constexpr uint8_t NUM_CANALES = 8;
     static constexpr uint8_t BYTES_POR_CANAL = 3;
     static constexpr uint8_t BYTES_POR_MUESTRA = NUM_CANALES * BYTES_POR_CANAL; // 24
+
+    // Contadores de diagnóstico: en qué punto exacto se pierde cada muestra
+    // que readChannels() no consigue devolver. Se incrementan desde
+    // readChannels()/waitForDRDY() y se leen (y resetean) desde taskEMG una
+    // vez por segundo para saber dónde está el cuello de botella real.
+    struct Estadisticas {
+        volatile uint32_t exitos = 0;
+        volatile uint32_t timeoutsDRDY = 0;
+        volatile uint32_t fallosSincronismo = 0;
+        volatile uint32_t descartesCeros = 0;
+    };
+    Estadisticas estadisticas;
 
     ADS1298(uint8_t cs, uint8_t reset, uint8_t pwdn, uint8_t start, uint8_t DRDY_n) {
         _cs = cs;
@@ -105,5 +120,8 @@ bool waitForDRDY(uint32_t timeoutMs = 20);
 // (los 3 bytes de status del frame SPI se descartan).
 bool readChannels(uint8_t muestra[BYTES_POR_MUESTRA]);
 void conversion();
+
+// ISR de DRDY: solo da el semáforo, nada más (debe ser mínima y en IRAM).
+void IRAM_ATTR onDrdyInterrupt();
 };
 extern ADS1298 ads;
