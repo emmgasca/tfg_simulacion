@@ -6,3 +6,8 @@
 src/versiones/*
 __pycache__/
 *.pyc
+
+# Capturas de prueba/banco: no hace falta llevar el historial de cada
+# comprobacion rapida. Las capturas que sí importan para el TFG se quedan
+# fuera de esta carpeta (en pc/), con nombre propio.
+pc/pruebas/
