@@ -52,7 +52,7 @@ if __name__ == "__main__":
     tabla_emg = pd.read_parquet(ruta)
 
     print(f"Archivo: {ruta}")
-    print(f"Fs asumida: {FRECUENCIA_MUESTREO} Hz (debe coincidir con analizar.py)")
+    print(f"Fs asumida: {FRECUENCIA_MUESTREO} Hz")
 
     snr_antes = calcular_snr(tabla_emg)
     tabla_limpia = limpiar_tabla(tabla_emg)

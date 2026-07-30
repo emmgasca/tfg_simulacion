@@ -24,7 +24,7 @@ nombre_salida_emg = f"{prefijo}_emg.parquet"
 nombre_salida_imu = f"{prefijo}_imu.parquet"
 nombre_salida_eventos = f"{prefijo}_eventos.parquet"
 
-MUESTRAS_POR_PAQUETE_EMG = 8  # debe coincidir con MUESTRAS_POR_PAQUETE en BLE.cpp
+MUESTRAS_POR_PAQUETE_EMG = 9  # debe coincidir con MUESTRAS_POR_PAQUETE en BLE.cpp
 
 muestras_emg = []
 muestras_imu = []
@@ -113,8 +113,7 @@ async def main():
         if dispositivo is not None:
             break
     if dispositivo is None:
-        print("No se encontro la placa. Comprueba que este encendida, "
-              "anunciandose por BLE (LED azul) y sin otra app ya conectada a ella.")
+        print("No se encontro la placa. Comprueba que este encendida y que no haya otra app conectada.")
         return
 
     async with BleakClient(dispositivo) as client:
@@ -123,7 +122,7 @@ async def main():
         await client.start_notify(CARACTERISTICA_EMG, cuando_llega_dato_emg)
         await client.start_notify(CARACTERISTICA_IMU, cuando_llega_dato_imu)
         await client.start_notify(CARACTERISTICA_EVENTOS, cuando_llega_evento)
-        print(f"Escuchando {duracion_s}s (los datos EMG/IMU llegan automáticamente; START/STOP/MARK en la placa quedan registrados).")
+        print(f"Escuchando {duracion_s}s...")
         try:
             await reportar_progreso(duracion_s)
         except (KeyboardInterrupt, asyncio.CancelledError):
@@ -143,32 +142,28 @@ async def main():
     print(f"Guardados {len(eventos)} eventos en {nombre_salida_eventos}")
 
     print(f"\nPaquetes EMG recibidos por BLE: {paquetes_emg_totales}")
-    print(f"Paquetes EMG corruptos descartados (CRC/formato invalido): {paquetes_emg_corruptos}")
-    print(f"Muestras EMG decodificadas: {len(muestras_emg)}")
+    print(f"Paquetes EMG corruptos descartados: {paquetes_emg_corruptos}")
 
-    # Deteccion por numero de secuencia (ahora por MUESTRA, no por paquete):
-    # funciona siempre, sin depender de haber pulsado START/STOP
-    # (grabando=true desde el arranque).
+    # Deteccion por numero de secuencia (por MUESTRA, no por paquete): funciona
+    # siempre, sin depender de haber pulsado START/STOP. No detecta muestras
+    # descartadas en el ESP32 antes de formar el paquete (cola llena); para
+    # eso esta la comparacion con el contador del firmware, mas abajo.
     if paquetes_emg_perdidos == 0:
-        print("OK: ninguna muestra EMG perdida por el aire (secuencia sin huecos). "
-              "Esto NO detecta muestras descartadas en el ESP32 antes de formar el "
-              "paquete (p. ej. cola llena porque BLE no drena tan rapido como el ADC); "
-              "para eso, mira la comparacion con el contador del firmware tras STOP.")
+        print("OK: sin huecos de secuencia EMG.")
     else:
-        print(f"AVISO: se detectaron ~{paquetes_emg_perdidos} muestras EMG perdidas por el aire.")
-
+        print(f"AVISO: ~{paquetes_emg_perdidos} muestras EMG perdidas por el aire.")
 
     if muestras_firmware_en_stop is not None:
         paquetes_esperados = muestras_firmware_en_stop // MUESTRAS_POR_PAQUETE_EMG
         perdidas = muestras_firmware_en_stop - len(muestras_emg)
-        print(f"Muestras procesadas por el firmware (segun evento STOP): {muestras_firmware_en_stop}")
-        print(f"Paquetes BLE esperados (muestras_firmware // {MUESTRAS_POR_PAQUETE_EMG}): {paquetes_esperados}")
+        print(f"Muestras procesadas por el firmware (evento STOP): {muestras_firmware_en_stop}")
+        print(f"Paquetes BLE esperados: {paquetes_esperados}")
+        # El ultimo paquete parcial (<MUESTRAS_POR_PAQUETE_EMG muestras) no se
+        # manda hasta llenarse, asi que una diferencia pequeña es normal.
         if perdidas <= MUESTRAS_POR_PAQUETE_EMG - 1:
-            print(f"OK: diferencia de {perdidas} muestras, dentro del margen normal "
-                  f"(el ultimo paquete parcial, <{MUESTRAS_POR_PAQUETE_EMG} muestras, no se envia hasta llenarse).")
+            print(f"OK: diferencia de {perdidas} muestras, dentro del margen normal.")
         else:
-            print(f"AVISO: faltan {perdidas} muestras respecto a lo que proceso el firmware "
-                  f"-- posible perdida de paquetes BLE (notify sin ACK).")
+            print(f"AVISO: faltan {perdidas} muestras respecto al firmware.")
     else:
        print("No se recibio evento STOP: no se puede comparar con el contador del firmware.")
 

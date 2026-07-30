@@ -1,3 +1,6 @@
+// Punto de entrada del firmware. Aqui solo se inicializa cada modulo (ADC,
+// IMU, LEDs, botones) y se arranca BLE; la logica de cada uno vive en su
+// propio archivo (ads1298.cpp, imu.cpp, botones.cpp, BLE.cpp).
 #include <Arduino.h>
 #include "ads1298.h"
 #include "hal.h"

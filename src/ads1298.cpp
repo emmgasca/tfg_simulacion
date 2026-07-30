@@ -4,13 +4,17 @@
 #include "ads1298.h"
 #include "hal.h"
 
-// Trampolín de la ISR de DRDY. Tiene que ser una función con linkage propio
-// marcada IRAM_ATTR (no una lambda sin marcar): si el código de la ISR no
-// vive en IRAM y la interrupción salta justo cuando la caché de flash está
-// desactivada (p. ej. por una escritura a flash del stack BLE), el ESP32
-// crashea con un "Guru Meditation Error" y se reinicia. Con DRDY disparando
-// a 2 kHz, la probabilidad de coincidir con una de esas ventanas no es
-// despreciable.
+// Esta función se ejecuta sola cada vez que el ADS1298 avisa (bajando el
+// pin DRDY) de que tiene un dato nuevo listo -- miles de veces por
+// segundo. Por eso tiene que ser mínima: aquí solo se avisa a la tarea
+// que está esperando ese dato (más abajo), nada más de trabajo.
+//
+// Detalle técnico: tiene que estar marcada IRAM_ATTR, es decir, vivir en
+// una zona de memoria especial en vez de en la flash normal. Si no lo
+// estuviera, y la interrupción saltara justo cuando la flash está
+// momentáneamente desactivada (pasa a veces mientras el Bluetooth
+// escribe datos), el ESP32 se reiniciaría solo con un error críptico
+// ("Guru Meditation Error").
 static void IRAM_ATTR ads1298_drdy_isr() {
     ads.onDrdyInterrupt();
 }

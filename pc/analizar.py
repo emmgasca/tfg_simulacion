@@ -1,3 +1,7 @@
+# Inspeccion visual rapida de una captura ya guardada: dibuja los 8
+# canales EMG (y el IMU, si existe) en una grafica interactiva HTML.
+# No filtra ni analiza nada -- para eso estan snr_diagnostico.py y
+# snr_limpieza.py.
 import pandas as pd
 import numpy as np
 import plotly.graph_objects as go

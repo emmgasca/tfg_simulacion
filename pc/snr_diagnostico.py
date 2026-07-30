@@ -50,7 +50,7 @@ if __name__ == "__main__":
     tabla_emg = pd.read_parquet(ruta)
     snr = calcular_snr(tabla_emg)
     print(f"Archivo: {ruta}")
-    print(f"Fs asumida: {FRECUENCIA_MUESTREO} Hz (debe coincidir con analizar.py)")
+    print(f"Fs asumida: {FRECUENCIA_MUESTREO} Hz")
     for canal, valor in snr.items():
         print(f"{canal}: SNR = {valor:.1f} dB (senal {BANDA_SENAL_HZ} Hz vs. red {RUIDO_HZ} Hz)")
 

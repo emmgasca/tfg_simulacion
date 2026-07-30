@@ -14,19 +14,71 @@
 #define CHAR_IMU_CONFIG   "dddddddd-1234-1234-1234-123456789abc"
 #define CHAR_EVENT_DATA "eeeeeeee-1234-1234-1234-123456789abc"
 
-// EXPERIMENTO: formato de paquete de antes de adaptarlo a ParkEMG (sin
-// magic/version/CRC16, solo un contador de PAQUETE de 2 bytes) -- para
-// aislar si la perdida original era solo cuestion de tamano de paquete o si
-// de verdad hacia falta el framing/CRC de ParkEMG. Unico cambio respecto al
-// formato de entonces: MUESTRAS_POR_PAQUETE baja de 10 a 8, el mismo margen
-// (~45-49 bytes bajo el techo de ~248-252 bytes de NimBLE-Arduino, ver
-// CONFIG_BT_NIMBLE_ACL_BUF_SIZE) que ya se valido con el formato PB v2 y dejo
-// la perdida en 0. El tuning de conexion (CallbacksServidor, mas abajo) se
-// mantiene igual: eso ya se demostro necesario aparte del tamano de paquete.
-static constexpr uint8_t MUESTRAS_POR_PAQUETE = 8;
+// ---------------------------------------------------------------------
+// FORMATO DEL PAQUETE EMG que se manda por Bluetooth
+// ---------------------------------------------------------------------
+// En vez de mandar cada muestra del ADC por separado (serian miles de
+// envios BLE por segundo), se agrupan varias muestras en un mismo
+// paquete. La estructura del paquete, basada en el proyecto ParkEMG
+// (streamlit_emg_live.py), es:
+//
+//   ["PB"] [version] [num_muestras] [num_secuencia] [tam_muestra] [datos EMG...] [CRC16]
+//
+// - "num_secuencia": numero de la primera muestra de este paquete. El PC
+//   lo usa para darse cuenta si falta algun paquete por el camino.
+// - "CRC16": un codigo de verificacion al final (explicado junto a
+//   crc16_ccitt(), mas abajo). Detecta datos corrompidos por interferencia
+//   de radio, aunque el paquete llegue del tamaño correcto.
+//
+// DETALLE TECNICO -- por que MUESTRAS_POR_PAQUETE vale 8 y no otro numero:
+// La libreria BLE que usamos (NimBLE-Arduino) nunca puede mandar mas de
+// ~250 bytes en un solo envio, pase lo que pase (limite interno de la
+// libreria, no del hardware). Con 10 muestras por paquete el envio pesaba
+// 251 bytes: literalmente al borde de ese limite, y bastaba una pequeña
+// variacion en la conexion para que el envio se rompiera (eso era la
+// "perdida de paquetes"). Con 8 muestras el envio pesa 203 bytes: sobra
+// margen de sobra y deja de romperse. Subir a 20 muestras (491 bytes) se
+// probo y no cabe nunca, muy por encima del limite.
+//
+// Se hizo tambien una prueba quitando el CRC/cabecera (solo un contador
+// simple de 2 bytes) para comprobar si hacia falta: el resultado fue
+// igual de bueno. Es decir, lo que arreglaba la perdida era el tamaño del
+// paquete y el ajuste de la conexion (mas abajo), no el CRC. El CRC se
+// mantiene de todas formas porque protege de un problema distinto: datos
+// corrompidos por radio que llegan del tamaño correcto pero con el
+// contenido equivocado, algo que ni el tamaño ni el numero de secuencia
+// pueden detectar por si solos.
+static constexpr uint8_t MUESTRAS_POR_PAQUETE = 9;
 static constexpr size_t BYTES_PAQUETE_EMG = MUESTRAS_POR_PAQUETE * ADS1298::BYTES_POR_MUESTRA;
-static constexpr size_t BYTES_CABECERA_EMG = 2;  // num. de paquete, 16 bits, little-endian
-static constexpr size_t BYTES_NOTIFY_EMG = BYTES_CABECERA_EMG + BYTES_PAQUETE_EMG;
+static constexpr uint8_t LOTE_MAGIC0 = 'P';
+static constexpr uint8_t LOTE_MAGIC1 = 'B';
+static constexpr uint8_t LOTE_VERSION = 2;
+static constexpr size_t LOTE_CABECERA = 9;  // magic(2)+version(1)+num_muestras(1)+secuencia(4)+frame_size(1)
+static constexpr size_t LOTE_CRC = 2;
+static constexpr size_t BYTES_NOTIFY_EMG = LOTE_CABECERA + BYTES_PAQUETE_EMG + LOTE_CRC;
+
+// Calcula un "codigo de verificacion" de 16 bits a partir de todos los
+// bytes del paquete. El PC recalcula este mismo numero al recibirlo; si
+// no coincide con el que viaja al final del paquete, algo ha cambiado por
+// el camino (por ejemplo, un bit volteado por interferencia de radio) y
+// el paquete se descarta como corrupto.
+// Algoritmo CRC16-CCITT (poli 0x1021, init 0xFFFF, MSB primero) -- el
+// mismo, byte a byte, que usa streamlit_emg_live.py, para que las dos
+// partes calculen siempre el mismo valor sobre los mismos bytes.
+static uint16_t crc16_ccitt(const uint8_t* datos, size_t longitud) {
+    uint16_t crc = 0xFFFF;
+    for (size_t i = 0; i < longitud; i++) {
+        crc ^= (uint16_t)datos[i] << 8;
+        for (uint8_t bit = 0; bit < 8; bit++) {
+            if (crc & 0x8000) {
+                crc = (uint16_t)((crc << 1) ^ 0x1021);
+            } else {
+                crc = (uint16_t)(crc << 1);
+            }
+        }
+    }
+    return crc;
+}
 
 QueueHandle_t queueEMG;
 QueueHandle_t queueIMU;
@@ -35,11 +87,14 @@ void taskEMG(void* param);
 void taskIMU(void* param);
 void taskBLE(void* param);
 
-// Callbacks de conexion BLE: sin esto, el firmware nunca ve el MTU realmente
-// negociado (solo se ve lo que se PIDE con setMTU(), no lo que el central
-// acepta) ni pide parametros de conexion/Data Length Extension mejores que
-// los que trae NimBLE por defecto -- ambos relevantes para sostener el
-// throughput que exige el EMG a 2 kHz (~400+ kbps).
+// Estas funciones se disparan solas cuando el PC se conecta, se
+// desconecta, o cuando queda acordado el tamaño maximo de paquete (MTU)
+// con el PC. Sin esto, el firmware no tenia forma de:
+//  1) Saber que tamaño de paquete acepto REALMENTE el PC (antes solo se
+//     veia lo que el firmware pedia, no lo que el PC aceptaba).
+//  2) Pedir una conexion mas rapida -- necesario porque a 2000 muestras
+//     por segundo hay que mandar bastantes datos por segundo, y la
+//     configuracion por defecto de la libreria se queda corta.
 class CallbacksServidor : public NimBLEServerCallbacks {
     void onConnect(NimBLEServer* pServer, ble_gap_conn_desc* desc) override {
         // conn_itvl viene en unidades de 1.25 ms; supervision_timeout en
@@ -189,11 +244,12 @@ void taskBLE (void* param){
     uint8_t bufferEMG[BYTES_PAQUETE_EMG];
     uint8_t indiceEMG = 0;
 
-    // Paquete final que se envia por BLE: contador de paquete (2 bytes, no de
-    // muestra) + muestras, sin CRC. El PC reconstruye una secuencia por
-    // muestra multiplicando este contador por MUESTRAS_POR_PAQUETE.
+    // Paquete final que se envia por BLE: cabecera (formato ParkEMG "PB" v2) +
+    // muestras + CRC16. La secuencia es POR MUESTRA (no por paquete): identifica
+    // la primera muestra del lote, y el PC puede reconstruir la secuencia exacta
+    // de cada una de las N muestras del paquete a partir de ella.
     uint8_t paqueteEMG[BYTES_NOTIFY_EMG];
-    uint16_t contadorPaquetesEMG = 0;
+    uint32_t primeraSecuenciaLote = 0;
 
     while(true){
 
@@ -215,13 +271,20 @@ void taskBLE (void* param){
                 memcpy(&bufferEMG[indiceEMG * ADS1298::BYTES_POR_MUESTRA], muestra, ADS1298::BYTES_POR_MUESTRA);
                 indiceEMG++;
                 if (indiceEMG >= MUESTRAS_POR_PAQUETE) {
-                    paqueteEMG[0] = (uint8_t)(contadorPaquetesEMG & 0xFF);
-                    paqueteEMG[1] = (uint8_t)((contadorPaquetesEMG >> 8) & 0xFF);
-                    memcpy(&paqueteEMG[BYTES_CABECERA_EMG], bufferEMG, BYTES_PAQUETE_EMG);
+                    paqueteEMG[0] = LOTE_MAGIC0;
+                    paqueteEMG[1] = LOTE_MAGIC1;
+                    paqueteEMG[2] = LOTE_VERSION;
+                    paqueteEMG[3] = MUESTRAS_POR_PAQUETE;
+                    memcpy(&paqueteEMG[4], &primeraSecuenciaLote, sizeof(primeraSecuenciaLote));
+                    paqueteEMG[8] = ADS1298::BYTES_POR_MUESTRA;  // frame_size (24, sin bytes de status)
+                    memcpy(&paqueteEMG[LOTE_CABECERA], bufferEMG, BYTES_PAQUETE_EMG);
+
+                    uint16_t crc = crc16_ccitt(paqueteEMG, LOTE_CABECERA + BYTES_PAQUETE_EMG);
+                    memcpy(&paqueteEMG[LOTE_CABECERA + BYTES_PAQUETE_EMG], &crc, sizeof(crc));
 
                     pCharEMGData->setValue(paqueteEMG, BYTES_NOTIFY_EMG);
                     pCharEMGData->notify();
-                    contadorPaquetesEMG++;
+                    primeraSecuenciaLote += MUESTRAS_POR_PAQUETE;
                     indiceEMG = 0;
                     enviadoEMG = true;
                 }

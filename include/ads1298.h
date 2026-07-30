@@ -85,12 +85,11 @@ public:
         volatile uint32_t timeoutsDRDY = 0;
         volatile uint32_t fallosSincronismo = 0;
         volatile uint32_t descartesCeros = 0;
-        // Flancos DRDY que llegaron mientras el semaforo binario ya estaba
-        // "dado" (la tarea aun no habia consumido el anterior). Un semaforo
-        // binario no acumula flancos pendientes, asi que estos se pierden sin
-        // remedio: si taskEMG se retrasa (p. ej. bloqueado en xQueueSend
-        // porque la cola BLE esta llena), las muestras del ADC que caen en
-        // ese hueco desaparecen sin pasar por ningun otro contador.
+        // Cuantas muestras del ADC se han perdido sin remedio porque el
+        // resto del programa iba mas lento que el sensor en ese instante
+        // (p. ej. taskEMG bloqueada esperando sitio en la cola BLE). No
+        // hay forma de recuperarlas: el aviso "dato nuevo listo" llega y
+        // se pierde si nadie lo estaba esperando en ese momento exacto.
         volatile uint32_t perdidasDRDY = 0;
     };
     Estadisticas estadisticas;
