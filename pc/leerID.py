@@ -8,7 +8,10 @@ print(len(df))
 
 print(df.describe())
 
-# --- Analisis de huecos en la secuencia de paquetes ---
+# --- Analisis de huecos en la secuencia de MUESTRAS ---
+# paquete_id es un numero de secuencia POR MUESTRA (formato ParkEMG "PB" v2),
+# no por paquete: cada paquete trae 10 muestras con 10 paquete_id consecutivos.
+# Por eso aqui ya no hace falta multiplicar nada por 10.
 ids_unicos = df["paquete_id"].drop_duplicates().reset_index(drop=True)
 saltos = ids_unicos.diff()
 
@@ -17,20 +20,17 @@ print("Huecos encontrados:", len(huecos))
 print(huecos)
 
 tamanos_hueco = (saltos[saltos > 1] - 1)
-print("\nTamano de cada hueco (cuantos paquetes se perdieron de una vez):")
+print("\nTamano de cada hueco (cuantas muestras se perdieron de una vez):")
 print(tamanos_hueco.value_counts())
 
 distancia_entre_huecos = huecos.diff()
-print("\nDistancia entre huecos consecutivos (cada cuantos paquetes se repite):")
+print("\nDistancia entre huecos consecutivos (cada cuantas muestras se repite):")
 print(distancia_entre_huecos.value_counts())
 
 # --- Resumen ---
-total_posibles = ids_unicos.max() - ids_unicos.min() + 1
-total_recibidos = len(ids_unicos)
-total_perdidos = total_posibles - total_recibidos
-print(f"\nPaquetes esperados: {total_posibles}")
-print(f"Paquetes recibidos: {total_recibidos}")
-print(f"Paquetes perdidos: {total_perdidos} ({100 * total_perdidos / total_posibles:.1f}%)")
-print(f"\nMuestras esperadas: {total_posibles * 10}")
-print(f"Muestras recibidas: {len(df)}")
-print(f"Muestras perdidas: {total_perdidos * 10}")
+muestras_esperadas = ids_unicos.max() - ids_unicos.min() + 1
+muestras_recibidas = len(ids_unicos)
+muestras_perdidas = muestras_esperadas - muestras_recibidas
+print(f"\nMuestras esperadas: {muestras_esperadas}")
+print(f"Muestras recibidas: {muestras_recibidas}")
+print(f"Muestras perdidas: {muestras_perdidas} ({100 * muestras_perdidas / muestras_esperadas:.1f}%)")

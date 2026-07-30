@@ -23,13 +23,22 @@
 // paquetes perdidos por el aire.
 //
 // Probado y descartado: subir a 20 muestras/paquete (491 bytes) necesita mas
-// MTU del que se negocia por defecto (~252 bytes utiles). Con
-// NimBLEDevice::setMTU(512) explicito, la conexion BLE dejaba de funcionar;
-// sin setMTU(), el cliente tampoco negocia por su cuenta suficiente MTU y
-// los paquetes de 491 bytes llegan truncados/corruptos (todo a cero).
-// Conclusion: 10 muestras/paquete es el tamaño estable con este hardware/
-// pila BLE, sin tocar el MTU.
-static constexpr uint8_t MUESTRAS_POR_PAQUETE = 10;
+// MTU del que se negocia por defecto. Con NimBLEDevice::setMTU(512) explicito,
+// la conexion BLE dejaba de funcionar; sin setMTU(), el cliente tampoco
+// negocia por su cuenta suficiente MTU y los paquetes de 491 bytes llegan
+// truncados/corruptos (todo a cero).
+//
+// Motivo real (confirmado contra el codigo fuente de NimBLE-Arduino 1.4.0):
+// CONFIG_BT_NIMBLE_ACL_BUF_SIZE esta fijado a 255 bytes en la propia libreria
+// (no es un #ifndef de nimconfig.h, asi que no se puede subir con un
+// build_flag). Eso deja un techo util de ~248-252 bytes por notify pase lo
+// que pase con setMTU() -- 491 bytes no cabe nunca. Con 10 muestras/paquete
+// (251 bytes) el margen real era de 0-4 bytes: cualquier conexion que
+// negociara un MTU un poco por debajo del maximo truncaba el paquete en
+// silencio (NimBLECharacteristic::notify() trunca sin avisar si el valor
+// supera el MTU de esa conexion). Se baja a 8 muestras/paquete (203 bytes)
+// para tener ~45-49 bytes de margen real.
+static constexpr uint8_t MUESTRAS_POR_PAQUETE = 8;
 static constexpr size_t BYTES_PAQUETE_EMG = MUESTRAS_POR_PAQUETE * ADS1298::BYTES_POR_MUESTRA;
 static constexpr uint8_t LOTE_MAGIC0 = 'P';
 static constexpr uint8_t LOTE_MAGIC1 = 'B';
@@ -62,6 +71,53 @@ QueueHandle_t queueIMU;
 void taskEMG(void* param);
 void taskIMU(void* param);
 void taskBLE(void* param);
+
+// Callbacks de conexion BLE: sin esto, el firmware nunca ve el MTU realmente
+// negociado (solo se ve lo que se PIDE con setMTU(), no lo que el central
+// acepta) ni pide parametros de conexion/Data Length Extension mejores que
+// los que trae NimBLE por defecto -- ambos relevantes para sostener el
+// throughput que exige el EMG a 2 kHz (~400+ kbps).
+class CallbacksServidor : public NimBLEServerCallbacks {
+    void onConnect(NimBLEServer* pServer, ble_gap_conn_desc* desc) override {
+        // conn_itvl viene en unidades de 1.25 ms; supervision_timeout en
+        // unidades de 10 ms. OJO: esto es el intervalo INICIAL que propuso
+        // el central antes de pedir updateConnParams() mas abajo, no el
+        // valor final tras la renegociacion (NimBLEServerCallbacks no tiene
+        // un callback para "parametros actualizados" en esta version). Aun
+        // asi sirve de referencia: si ya de entrada es un intervalo largo
+        // (30-50 ms), el central puede no estar aceptando negociaciones mas
+        // agresivas despues.
+        Serial.printf("BLE: cliente conectado (handle=%d) | intervalo inicial=%.2fms latencia=%u timeout=%ums\n",
+                      desc->conn_handle,
+                      desc->conn_itvl * 1.25,
+                      (unsigned)desc->conn_latency,
+                      (unsigned)desc->supervision_timeout * 10);
+        // Intervalo corto (7.5-15 ms) y sin latencia, para maximizar cuantos
+        // notify/s caben en el enlace. El central tiene la ultima palabra y
+        // puede no conceder justo esto, pero es lo maximo que el periferico
+        // puede pedir.
+        pServer->updateConnParams(desc->conn_handle, 6, 12, 0, 400);
+        // Data Length Extension al maximo permitido por el estandar (251
+        // bytes de payload de enlace), para que un notify no se fragmente en
+        // paquetes de 27 bytes (el valor por defecto sin DLE).
+        pServer->setDataLen(desc->conn_handle, 251);
+    }
+
+    void onDisconnect(NimBLEServer* pServer, ble_gap_conn_desc* desc) override {
+        Serial.println("BLE: cliente desconectado, reanudando advertising...");
+        NimBLEDevice::startAdvertising();
+    }
+
+    void onMTUChange(uint16_t mtu, ble_gap_conn_desc* desc) override {
+        // Esto es lo que hasta ahora no se podia ver: el MTU que de verdad
+        // negocia el cliente (Windows/bleak), no el que la libreria PREFIERE.
+        // Con MUESTRAS_POR_PAQUETE=8, BYTES_NOTIFY_EMG (ver mas abajo) debe
+        // caber en mtu - 3 para que ningun paquete EMG se trunque en silencio.
+        Serial.printf("BLE: MTU negociado = %u bytes (util para notify: %d bytes)\n",
+                      (unsigned)mtu, (int)mtu - 3);
+    }
+};
+static CallbacksServidor callbacksServidor;
 
 void bleSetup(){
     // Cola con margen para absorber ráfagas sin perder muestras si el consumidor BLE se retrasa.
@@ -104,17 +160,19 @@ void taskEMG (void* param){
 
         if (millis() - ultimoReporte >= 1000) {
             Serial.printf(
-                "Tasa real EMG: %lu muestras/s | exitos=%lu timeoutDRDY=%lu sincFail=%lu ceros=%lu | colaLlena=%lu\n",
+                "Tasa real EMG: %lu muestras/s | exitos=%lu timeoutDRDY=%lu sincFail=%lu ceros=%lu perdidasDRDY=%lu | colaLlena=%lu\n",
                 (unsigned long)muestrasEsteSegundo,
                 (unsigned long)ads.estadisticas.exitos,
                 (unsigned long)ads.estadisticas.timeoutsDRDY,
                 (unsigned long)ads.estadisticas.fallosSincronismo,
                 (unsigned long)ads.estadisticas.descartesCeros,
+                (unsigned long)ads.estadisticas.perdidasDRDY,
                 (unsigned long)colaLlenaEsteSegundo);
             ads.estadisticas.exitos = 0;
             ads.estadisticas.timeoutsDRDY = 0;
             ads.estadisticas.fallosSincronismo = 0;
             ads.estadisticas.descartesCeros = 0;
+            ads.estadisticas.perdidasDRDY = 0;
             muestrasEsteSegundo = 0;
             colaLlenaEsteSegundo = 0;
             ultimoReporte = millis();
@@ -138,6 +196,7 @@ void taskBLE (void* param){
     NimBLEDevice::init("ESP32");
     //Crear Servidor BLE
     NimBLEServer* pServer = NimBLEDevice::createServer();
+    pServer->setCallbacks(&callbacksServidor);
     //Crear Servicio EMG
     NimBLEService* pServiceEMG = pServer->createService(SERVICE_EMG);
     //Crear Char EMG DATA

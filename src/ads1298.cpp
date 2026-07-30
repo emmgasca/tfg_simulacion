@@ -125,7 +125,11 @@ bool ADS1298:: waitForDRDY (uint32_t timeoutMs) {
 
 void IRAM_ATTR ADS1298::onDrdyInterrupt() {
     BaseType_t higherPriorityTaskWoken = pdFALSE;
-    xSemaphoreGiveFromISR(_drdySemaphore, &higherPriorityTaskWoken);
+    if (xSemaphoreGiveFromISR(_drdySemaphore, &higherPriorityTaskWoken) != pdTRUE) {
+        // El semaforo ya estaba dado: la tarea no llego a consumir el flanco
+        // anterior, asi que este se pierde (ver comentario en Estadisticas).
+        estadisticas.perdidasDRDY++;
+    }
     portYIELD_FROM_ISR(higherPriorityTaskWoken);
 }
 bool ADS1298 :: readChannels(uint8_t muestra[BYTES_POR_MUESTRA]) {
@@ -134,6 +138,7 @@ bool ADS1298 :: readChannels(uint8_t muestra[BYTES_POR_MUESTRA]) {
         // absoluto: se dispara a la velocidad máxima del bus SPI, ajena a
         // que haya o no una conversión nueva lista.
         if (!waitForDRDY()) {
+            estadisticas.timeoutsDRDY++;
             return false;
         }
 
@@ -156,6 +161,7 @@ bool ADS1298 :: readChannels(uint8_t muestra[BYTES_POR_MUESTRA]) {
         // de frame[0] = 0xC), según la Figura 61 del datasheet del ADS1298. Si no es así,
         // la trama SPI está desalineada (o son datos basura) y se descarta.
         if ((frame[0] & 0xF0) != 0xC0) {
+            estadisticas.fallosSincronismo++;
             return false;
         }
 
@@ -167,11 +173,13 @@ bool ADS1298 :: readChannels(uint8_t muestra[BYTES_POR_MUESTRA]) {
             }
         }
         if (!hasMeaningfulData) {
+            estadisticas.descartesCeros++;
             return false;
         }
 
         // Se descartan los 3 bytes de status; se conservan los 24 bytes de canales tal cual.
         memcpy(muestra, frame + 3, BYTES_POR_MUESTRA);
+        estadisticas.exitos++;
 
        static uint32_t debugCount = 0;
         if ((debugCount++ % 200) == 0) {

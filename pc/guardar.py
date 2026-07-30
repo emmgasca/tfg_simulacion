@@ -24,7 +24,7 @@ nombre_salida_emg = f"{prefijo}_emg.parquet"
 nombre_salida_imu = f"{prefijo}_imu.parquet"
 nombre_salida_eventos = f"{prefijo}_eventos.parquet"
 
-MUESTRAS_POR_PAQUETE_EMG = 10  # debe coincidir con MUESTRAS_POR_PAQUETE en BLE.cpp
+MUESTRAS_POR_PAQUETE_EMG = 8  # debe coincidir con MUESTRAS_POR_PAQUETE en BLE.cpp
 
 muestras_emg = []
 muestras_imu = []
@@ -56,8 +56,11 @@ def cuando_llega_dato_emg(caracteristica, paquete):
     if siguiente_secuencia_esperada is not None and secuencia_base != siguiente_secuencia_esperada:
         salto = (secuencia_base - siguiente_secuencia_esperada) & 0xFFFFFFFF
         paquetes_emg_perdidos += salto
-        print(f"AVISO: hueco en secuencia EMG -- se esperaba muestra #{siguiente_secuencia_esperada}, "
-              f"llego #{secuencia_base} (perdidas ~{salto} muestra/s)")
+        # Sin print() aqui a proposito: con ~35% de perdida, esto puede saltar
+        # decenas de veces por segundo, y cada print() es E/S de consola que
+        # puede bloquear el bucle de asyncio el tiempo suficiente para perder
+        # AUN MAS notificaciones BLE mientras Python esta ocupado escribiendo
+        # en pantalla. El resumen final ya reporta el total.
     siguiente_secuencia_esperada = (secuencia_base + len(canales_por_muestra)) & 0xFFFFFFFF
 
     # Se guarda la secuencia real de CADA muestra (no la del paquete repetida)
