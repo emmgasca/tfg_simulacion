@@ -11,3 +11,8 @@ __pycache__/
 # comprobacion rapida. Las capturas que sí importan para el TFG se quedan
 # fuera de esta carpeta (en pc/), con nombre propio.
 pc/pruebas/
+
+# Ensayos de banco (ensayos_3): muchas capturas organizadas por sesion,
+# no hace falta llevar el historial de cada una en git (mismo criterio
+# que pc/pruebas/).
+pc/ensayos_3/
