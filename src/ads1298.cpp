@@ -228,7 +228,7 @@ void ADS1298:: conversion() {
         writeRegister(ADSGPIO, 0x00);
 
         for (uint8_t ch = 0; ch < 8; ch++) {
-            writeRegister(CH1SET + ch, 0x00);
+            writeRegister(CH1SET + ch, 0x00     );
         }
 
         writeRegister(RLD_SENSN, 0x00);

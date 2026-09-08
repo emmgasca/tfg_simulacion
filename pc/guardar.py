@@ -19,7 +19,7 @@ NOMBRE_EVENTO = {0: "START", 1: "STOP", 2: "MARK"}
 #    escuchando duracion_s segundos.
 # Sin argumentos: nombre "captura", duracion 60s (como antes).
 prefijo = sys.argv[1] if len(sys.argv) > 1 else "captura"
-duracion_s = int(sys.argv[2]) if len(sys.argv) > 2 else 60
+duracion_s = int(sys.argv[2]) if len(sys.argv) > 2 else 50
 nombre_salida_emg = f"{prefijo}_emg.parquet"
 nombre_salida_imu = f"{prefijo}_imu.parquet"
 nombre_salida_eventos = f"{prefijo}_eventos.parquet"

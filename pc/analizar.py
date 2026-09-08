@@ -38,8 +38,8 @@ if tabla_imu is not None and len(tabla_imu) > 0:
         rows=2, cols=1, shared_xaxes=True,
         subplot_titles=("EMG (8 canales)", "IMU (x, y, z)"),
     )
-    for columna in canales_emg:
-        fig.add_trace(go.Scatter(x=tiempo_emg, y=tabla_emg[columna], mode="lines", name=columna), row=1, col=1)
+    for columna,bias in zip(canales_emg,  len(canales_emg)):
+        fig.add_trace(go.Scatter(x=tiempo_emg, y=tabla_emg[columna]+bias*2000000, mode="lines", name=columna), row=1, col=1)
     for eje in ("x", "y", "z"):
         fig.add_trace(go.Scatter(x=tabla_imu["t"], y=tabla_imu[eje], mode="lines", name=f"imu_{eje}"), row=2, col=1)
     fig.update_yaxes(title_text="valor EMG", row=1, col=1)
@@ -48,8 +48,9 @@ if tabla_imu is not None and len(tabla_imu) > 0:
     fig.update_layout(title=f"Señal capturada - EMG + IMU ({ruta_emg})")
 else:
     fig = go.Figure()
-    for columna in canales_emg:
-        fig.add_trace(go.Scatter(x=tiempo_emg, y=tabla_emg[columna], mode="lines", name=columna))
+    for columna,bias in zip(canales_emg,  range(len(canales_emg))):
+        fig.add_trace(go.Scatter(x=tiempo_emg, y=tabla_emg[columna]+bias*200000, mode="lines", name=columna))
+        # fig.add_trace(go.Scatter(x=tiempo_emg, y=tabla_emg[columna]+bias*2000000, mode="lines", name=columna), row=1, col=1)
     fig.update_layout(
         title=f"Señal capturada - 8 canales ({ruta_emg})",
         xaxis_title="tiempo (s)",
